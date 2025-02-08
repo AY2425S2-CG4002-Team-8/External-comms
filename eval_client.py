@@ -5,7 +5,7 @@ from tcp.tcp_client import TcpClient
 class EvalClient:
     def __init__(self, secret_key, host, port, eval_client_send_buffer):
         self.secret_key = secret_key
-        self.tcp_client = TcpClient(secret_key, host, port)
+        self.tcp_client = TcpClient(secret_key, host, port, True)
         self.eval_client_send_buffer = eval_client_send_buffer
     
     async def run(self):

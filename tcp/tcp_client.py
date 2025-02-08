@@ -7,10 +7,11 @@ from Crypto.Random import get_random_bytes
 from Crypto.Util.Padding import pad, unpad
 
 class TcpClient:
-    def __init__(self, secret_key, host, port, base_reconnect_delay=1, max_reconnect_delay=60, max_reconnect_attempts=10):
+    def __init__(self, secret_key, host, port, require_encryption, base_reconnect_delay=1, max_reconnect_delay=60, max_reconnect_attempts=10):
         self.secret_key = secret_key
         self.host = host
         self.port = port
+        self.require_encryption = require_encryption
         self.base_reconnect_delay = base_reconnect_delay
         self.max_reconnect_delay = max_reconnect_delay
         self.max_reconnect_attempts = max_reconnect_attempts
@@ -50,7 +51,7 @@ class TcpClient:
 
     async def receive_message(self):
         """
-        receive and decrypt the message from client
+        Receive the message from tcp server
         """
         success, message = False, None
         try:
@@ -91,11 +92,13 @@ class TcpClient:
             print("No connection has been made to the server to send message")
             return
         try:
-            print(message)
-            encrypted_message = self.encrypt(message)
+            encrypted_message = self.encrypt(message) if self.require_encryption else message
+            if isinstance(encrypted_message, str):
+                encrypted_message = encrypted_message.encode('utf-8')
+
             self.writer.write(f"{len(encrypted_message)}_".encode() + encrypted_message)
-            await self.writer.drain()
-            print(f"Succesfully sent message to server with (host, port): ({self.host}, {self.port}), with message: {message}, with encryption: {encrypted_message}")
+            await self.writer.drain()  # Ensure the message is sent
+            print(f"Succesfully sent message to server with (host, port): ({self.host}, {self.port}), with message: {message}")
         except Exception as e:
             print(f"Failed to send encrypted message to server with exception: {e}")
 
