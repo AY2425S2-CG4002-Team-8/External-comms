@@ -1,43 +1,25 @@
 import json
-
-
+import asyncio
 from tcp.tcp_client import TcpClient
 
-test_data = {
-    "player_id": 1, 
-    "action": "gun", 
-    "game_state": {
-        "p1": {
-            "hp": 100, 
-            "bullets": 5, 
-            "bombs": 2, 
-            "shield_hp": 0, 
-            "deaths": 0, 
-            "shields": 3
-        },
-        "p2": {
-            "hp": 95, 
-            "bullets": 6, 
-            "bombs": 2, 
-            "shield_hp": 0, 
-            "deaths": 0, 
-            "shields": 3
-        },
-    }
-}
-
-
 class EvalClient:
-    def __init__(self, secret_key, host, port):
+    def __init__(self, secret_key, host, port, eval_client_send_buffer):
         self.secret_key = secret_key
         self.tcp_client = TcpClient(secret_key, host, port)
+        self.eval_client_send_buffer = eval_client_send_buffer
     
-    async def initiate_eval_client(self):
+    async def run(self):
         await self.tcp_client.connect_to_server()
         await self.tcp_client.handshake()
+        await asyncio.gather(
+            self.send()
+        )
+
+    async def send(self):
         while True:
-            print("Press enter")
-            x = input()
-            await self.tcp_client.send_message(json.dumps(test_data))
-            success, res = await self.tcp_client.receive_message()
-            print(success, res)
+            try:
+                message = await self.eval_client_send_buffer.get()
+                print(f"Sending message from eval_client: {message}")
+                await self.tcp_client.send_message(json.dumps(message))
+            except Exception as e:
+                print(f"Exception in msg_sender: {e}")
