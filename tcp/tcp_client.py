@@ -18,15 +18,15 @@ class TcpClient:
         self.reader = None
         self.writer = None
     
-    async def initiate_connection(self):
+    async def connect(self):
         self.reader, self.writer = await asyncio.open_connection(self.host, self.port)
 
-    async def connect_to_server(self):
+    async def run(self):
         try:
-            await self.initiate_connection()
+            await self.connect()
             print(f"Successfully connected to server with (host, port): ({self.host}, {self.port})")
         except Exception as e:
-            print(f"Error connecting to server with (host, port): ({self.host}, {self.port})")
+            print(f"Error connecting to server with (host, port): ({self.host}, {self.port}), Attemping reconnection...")
             await self.reconnect()
 
     def encrypt(self, message) -> bytes:
@@ -49,7 +49,7 @@ class TcpClient:
         except Exception as e:
             print(f"Failed to handshake to server with exception: {e}")
 
-    async def receive_message(self):
+    async def receive_message(self) -> tuple[bool, str]:
         """
         Receive the message from tcp server
         """
@@ -72,6 +72,7 @@ class TcpClient:
                 length = int(data[:-1])
                 success = True
                 message = await self.reader.readexactly(length)
+                message = message.decode('utf-8')
                 return success, message
             
         except asyncio.TimeoutError:
@@ -97,7 +98,7 @@ class TcpClient:
                 encrypted_message = encrypted_message.encode('utf-8')
 
             self.writer.write(f"{len(encrypted_message)}_".encode() + encrypted_message)
-            await self.writer.drain()  # Ensure the message is sent
+            await self.writer.drain()
             print(f"Succesfully sent message to server with (host, port): ({self.host}, {self.port}), with message: {message}")
         except Exception as e:
             print(f"Failed to send encrypted message to server with exception: {e}")
@@ -106,11 +107,12 @@ class TcpClient:
     async def reconnect(self):
         current_reconnect_delay = self.base_reconnect_delay
         for attempt in range(self.max_reconnect_attempts):
-            await asyncio.sleep(current_reconnect_delay)
             try:
-                await self.initiate_connection()
-                print(f"Successfully reconnected to server with (host, port): ({self.host}, {self.port})")
+                await self.connect()
                 return
             except Exception as e:
-                print(f"Reconnect attempt {attempt + 1} failed with error: {e}")
-            current_reconnect_delay = max(2 * current_reconnect_delay, self.max_reconnect_delay)
+                print(f"TCP Client Connection failed: {e}. Retrying in {current_reconnect_delay} seconds...")
+            current_reconnect_delay = min(2 ** attempt, self.max_reconnect_delay)
+            await asyncio.sleep(current_reconnect_delay)
+
+        print(f"Exceeded maximum number of retry attempts: {self.max_reconnect_attempts}")

@@ -6,7 +6,7 @@ async def main(arguments):
     secret_key, host, port = arguments
     print("Starting game engine")
     game_engine = GameEngine(secret_key, host, port)
-    await game_engine.start()
+    await game_engine.run()
 
 
 if __name__ == '__main__':
