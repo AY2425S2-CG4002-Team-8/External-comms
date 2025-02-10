@@ -2,16 +2,28 @@ import asyncio
 import aiomqtt
 
 class MqttClient:
-    def __init__(self, host: str, port: int, publish_buffer, publish_topic: str, subscribe_topics: list):
+    def __init__(self, host: str, port: int, read_buffer, send_buffer, send_topic: str, subscribe_topics: list, base_reconnect_delay, max_reconnect_delay, max_reconnect_attempts):
         self.host = host
         self.port = port
-        self.publish_buffer = publish_buffer
-        self.publish_topic = publish_topic
+        self.read_buffer = read_buffer
+        self.send_buffer = send_buffer
+        self.send_topic = send_topic
         self.subscribe_topics = subscribe_topics
+        self.base_reconnect_delay = base_reconnect_delay
+        self.max_reconnect_delay = max_reconnect_delay
+        self.max_reconnect_attempts = max_reconnect_attempts
         self.isConnected = False
         self.client = None
     
     async def run(self):
+        try:
+            await self.connect()
+            return
+        except Exception as e:
+            print(f"Error connecting to server with MQTT broker on (host, port): ({self.host}, {self.port}), Attemping reconnection...")
+            await self.reconnect()
+
+    async def connect(self):
         try:
             async with aiomqtt.Client(self.host, self.port) as client:
                 self.client = client
@@ -27,11 +39,12 @@ class MqttClient:
             raise e
         except Exception as e:
             print(f"Error ocurred when running MQTT: {e}")
+            raise
     
     async def publish(self, message):
         if self.client and self.isConnected:
-            await self.client.publish(self.publish_topic, message)
-            print(f"Published message '{message}' to topic '{self.publish_topic}'")
+            await self.client.publish(self.send_topic, message)
+            print(f"Published message '{message}' to topic '{self.send_topic}'")
         else:
             print("Not connected to MQTT broker!")
     
@@ -47,7 +60,7 @@ class MqttClient:
     async def produce(self):
         while self.isConnected:
             try:
-                message = await self.publish_buffer.get()
+                message = await self.send_buffer.get()
                 await self.publish(message)
             except (aiomqtt.MqttError, aiomqtt.MqttCodeError) as e:
                 print(f"MQTT publish error: {e}. Disconnecting produce.")
@@ -63,5 +76,18 @@ class MqttClient:
         else:
             print("Not connected to MQTT broker!")
             
+    async def reconnect(self):
+        current_reconnect_delay = self.base_reconnect_delay
+        for attempt in range(self.max_reconnect_attempts):
+            self.isConnected, self.client = False, None
+            try:
+                await self.connect()
+                print(f"Successfully reconnected to server with (host, port): ({self.host}, {self.port})")
+                return
+            except Exception as e:
+                print(f"TCP Client Connection failed: {e}. Retrying in {current_reconnect_delay} seconds...")
+            current_reconnect_delay = min(2 ** attempt, self.max_reconnect_delay)
+            await asyncio.sleep(current_reconnect_delay)
 
+        print(f"Exceeded maximum number of retry attempts: {self.max_reconnect_attempts}")
         

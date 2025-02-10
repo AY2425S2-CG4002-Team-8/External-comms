@@ -56,7 +56,7 @@ class TcpServer:
         self.clients.discard(writer)
         return
 
-    async def receive_message(self, reader):
+    async def receive_message(self, reader) -> tuple[bool, str]:
         """
         Returns success and message received from tcp client or server
         """
@@ -119,11 +119,12 @@ class TcpServer:
 
 
     async def write_task(self, writer):
-        try:
-            message = await self.send_buffer.get()
-            await self.send_message(writer, message)
-        except Exception as e:
-            print(f"Not able to start write task in TCP server")
+        while True:
+            try:
+                message = await self.send_buffer.get()
+                await self.send_message(writer, message)
+            except Exception as e:
+                print(f"Not able to start write task in TCP server")
 
     async def close_connection(self, writer):
         host_name = writer.get_extra_info('peername')
