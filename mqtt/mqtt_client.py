@@ -1,93 +1,117 @@
 import asyncio
 import aiomqtt
+from logger import get_logger
+
+logger = get_logger(__name__)
 
 class MqttClient:
-    def __init__(self, host: str, port: int, read_buffer, send_buffer, send_topic: str, subscribe_topics: list, base_reconnect_delay, max_reconnect_delay, max_reconnect_attempts):
+    def __init__(self, host: str, port: int, read_buffer, send_buffer, send_topics: list, read_topics: list, base_reconnect_delay, max_reconnect_delay, max_reconnect_attempts):
         self.host = host
         self.port = port
         self.read_buffer = read_buffer
         self.send_buffer = send_buffer
-        self.send_topic = send_topic
-        self.subscribe_topics = subscribe_topics
+        self.send_topics = send_topics
+        self.read_topics = read_topics
         self.base_reconnect_delay = base_reconnect_delay
         self.max_reconnect_delay = max_reconnect_delay
         self.max_reconnect_attempts = max_reconnect_attempts
         self.isConnected = False
         self.client = None
     
-    async def run(self):
+    async def run(self) -> None:
         try:
             await self.connect()
             return
         except Exception as e:
-            print(f"Error connecting to server with MQTT broker on (host, port): ({self.host}, {self.port}), Attemping reconnection...")
+            logger.error(f"Error connecting to server with MQTT broker on (host, port): ({self.host}, {self.port}), Attemping reconnection...")
             await self.reconnect()
 
-    async def connect(self):
+    async def connect(self) -> None:
+        """
+        Connects to MQTT broker at desired host and port
+        Once connected set client and isConnected, and run produce and consume tasks
+        """
         try:
             async with aiomqtt.Client(self.host, self.port) as client:
                 self.client = client
                 self.isConnected = True
-                print(f"Connected to MQTT broker at {self.host}:{self.port}")
+                logger.info(f"Connected to MQTT broker at {self.host}:{self.port}")
                 await asyncio.gather(
                     asyncio.create_task(self.produce()),
                     asyncio.create_task(self.consume())
                 )
         except (aiomqtt.MqttError, aiomqtt.MqttCodeError) as e:
-            print(f"MQTT error: {e}")
+            logger.error(f"MQTT error: {e}")
             self.connected = False
             raise e
         except Exception as e:
-            print(f"Error ocurred when running MQTT: {e}")
+            logger.error(f"Error ocurred when running MQTT: {e}")
             raise
     
-    async def publish(self, message):
+    async def publish(self, message) -> None:
+        """ Publishes message to all topics that it should be published to """
         if self.client and self.isConnected:
-            await self.client.publish(self.send_topic, message)
-            print(f"Published message '{message}' to topic '{self.send_topic}'")
+            for topic in self.send_topics:
+                await self.client.publish(topic, message)
+                logger.info(f"Published message '{message}' to topic '{topic}'")
         else:
-            print("Not connected to MQTT broker!")
+            logger.warning("Not connected to MQTT broker to publish")
     
-    async def subscribe(self):
-        for topic in self.subscribe_topics:
+    async def subscribe(self) -> None:
+        """ Subscribe to all topics in self.read_topics - the topics this client needs to listen to """
+        for topic in self.read_topics:
             await self.client.subscribe(topic)
-            print(f"Successfully subscribed to topic {topic}")
+            logger.debug(f"Successfully subscribed to topic {topic}")
 
-    async def listen(self):
+    async def listen(self) -> None:
+        """ Listens to messages published by subscribed entities on client's cental message buffer and put into read_buffer """
         async for message in self.client.messages:
-            print(f"Received message: {message.payload.decode()} on topic '{message.topic}'")
+            logger.info(f"Received message: {message.payload.decode()} on topic '{message.topic}'")
+            await self.read_buffer.put(message.payload.decode())
     
-    async def produce(self):
+    async def produce(self) -> None:
+        """ Coroutine that asynchronously publishes all messages from send_buffer to all relevant topics """
         while self.isConnected:
             try:
                 message = await self.send_buffer.get()
                 await self.publish(message)
             except (aiomqtt.MqttError, aiomqtt.MqttCodeError) as e:
-                print(f"MQTT publish error: {e}. Disconnecting produce.")
+                logger.error(f"MQTT publish error: {e}. Disconnecting produce.")
                 self.connected = False
                 raise e
             except Exception as e:
-                print(f"Unexpected error in produce: {e}")
+                logger.error(f"Unexpected error in produce: {e}")
 
-    async def consume(self):
+    async def consume(self) -> None:
+        """ Coroutine that initialises subscription and runs listen asynchronously """
         if self.client and self.isConnected:
             await self.subscribe()
             await self.listen()
         else:
-            print("Not connected to MQTT broker!")
+            logger.warning("Not connected to MQTT broker to listen")
             
-    async def reconnect(self):
+    async def reconnect(self) -> None:
+        """ Attempt to reconnect to MQTT broker with exponential backoff """
         current_reconnect_delay = self.base_reconnect_delay
+
+        # Disconnect any client connection to refresh connection
+        if self.client:
+            try:
+                await self.client.disconnect()
+            except Exception as e:
+                logger.error(f"Error closing existing MQTT connection: {e}")
+
+        # Attempt connection every after a reconnection delay that exponentially increases to a maximum of 60 seconds
         for attempt in range(self.max_reconnect_attempts):
             self.isConnected, self.client = False, None
             try:
                 await self.connect()
-                print(f"Successfully reconnected to server with (host, port): ({self.host}, {self.port})")
+                logger.info(f"Successfully reconnected to server with (host, port): ({self.host}, {self.port})")
                 return
             except Exception as e:
-                print(f"TCP Client Connection failed: {e}. Retrying in {current_reconnect_delay} seconds...")
+                logger.info(f"TCP Client Connection failed: {e}. Retrying in {current_reconnect_delay} seconds...")
             current_reconnect_delay = min(2 ** attempt, self.max_reconnect_delay)
             await asyncio.sleep(current_reconnect_delay)
 
-        print(f"Exceeded maximum number of retry attempts: {self.max_reconnect_attempts}")
+        logger.warning(f"Exceeded maximum number of retry attempts: {self.max_reconnect_attempts}")
         

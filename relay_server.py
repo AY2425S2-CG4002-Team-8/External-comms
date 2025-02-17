@@ -1,5 +1,8 @@
 import asyncio
 from tcp.tcp_server import TcpServer
+from logger import get_logger
+
+logger = get_logger(__name__)
 
 class RelayServer:
     def __init__(self, secret_key, host, port, read_buffer, send_buffer):
@@ -25,10 +28,10 @@ class RelayServer:
         Starts the RelayServer by initializing and running the TCP server.
         """
         try:
-            print(f"Starting RelayServer on {self.host}:{self.port}")
+            logger.info(f"Starting RelayServer on {self.host}:{self.port}")
             await self.tcp_server.start()
         except Exception as e:
-            print(f"Failed to start RelayServer on {self.host}:{self.port}: {e}")
+            logger.error(f"Failed to start RelayServer on {self.host}:{self.port}: {e}")
 
     async def run(self):
         """
