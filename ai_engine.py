@@ -1,8 +1,13 @@
 import asyncio
 import json
 
+from logger import get_logger
+
+logger = get_logger(__name__)
+
 class AiEngine:
     def __init__(self, read_buffer, write_buffer):
+        self.PREDICTION_DATA_POINTS = 50
         self.read_buffer = read_buffer
         self.write_buffer = write_buffer
         self.hardcoded_sensor_data = {
@@ -175,8 +180,40 @@ class AiEngine:
                     -132, 39, 105, 325, 572, 734, 629, 355, 143, 108, 216, 226, 172, 82, -170, -370]
             }
         }
+
+    def get_data(self, data):
+        """
+        Converts a list of PacketImu objects into a combined input list for the AI.
+        """
+        ax_array, ay_array, az_array = [], [], []
+        gx_array, gy_array, gz_array = [], [], []
+
+        for packet in data:
+            # Gets integer from bytes. Little endian as defined by relay node and signed since values can be -ve
+            ax = int.from_bytes(packet.ax, byteorder='little', signed=True)
+            ay = int.from_bytes(packet.ay, byteorder='little', signed=True)
+            az = int.from_bytes(packet.az, byteorder='little', signed=True)
+            gx = int.from_bytes(packet.gx, byteorder='little', signed=True)
+            gy = int.from_bytes(packet.gy, byteorder='little', signed=True)
+            gz = int.from_bytes(packet.gz, byteorder='little', signed=True)
+
+            ax_array.append(ax)
+            ay_array.append(ay)
+            az_array.append(az)
+            gx_array.append(gx)
+            gy_array.append(gy)
+            gz_array.append(gz)
+
+        return {
+            'ax': ax_array,
+            'ay': ay_array,
+            'az': az_array,
+            'gx': gx_array,
+            'gy': gy_array,
+            'gz': gz_array
+        }
     
-    def classify(self, data: json):
+    def classify(self, data: json) -> str:
         """
         Matches read_buffer against predefined sensor data using exact comparison.
         """
@@ -195,11 +232,23 @@ class AiEngine:
         )
 
     async def predict(self):
+        data = []
         try:
             while True:
-                sensor_data = await self.read_buffer.get()
-                predicted_data = self.classify(sensor_data)
+                data.clear()
+                while len(data) < self.PREDICTION_DATA_POINTS:
+                    packet = await self.read_buffer.get()
+                    data.append(packet)
+                    logger.debug(f"IMU packet: {packet}. Received: {len(data)}/{self.PREDICTION_DATA_POINTS}")
+
+                if len(data) != self.PREDICTION_DATA_POINTS:
+                    logger.debug(f"Packet size of {self.PREDICTION_DATA_POINTS} was not received")
+                    continue
+                
+                data_dictionary = self.get_data(data)
+                predicted_data = self.classify(data_dictionary)
+                logger.debug(f"AI Engine Prediction: {predicted_data}")
                 await self.write_buffer.put(predicted_data)
 
         except Exception as e:
-            print(f"Error occurred in the AI Engine: {e}")
+            logger.error(f"Error occurred in the AI Engine: {e}")

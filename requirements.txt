@@ -1,2 +1,4 @@
 pycryptodome~=3.21.0
 aiomqtt~=2.3.0
+colorlog~=6.9.0
+
