@@ -21,3 +21,4 @@ if __name__ == '__main__':
         set_event_loop_policy(WindowsSelectorEventLoopPolicy())
 
     asyncio.run(main(sys.argv[1:]))
+    
