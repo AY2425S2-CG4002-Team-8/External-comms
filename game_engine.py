@@ -75,14 +75,15 @@ class GameEngine:
     async def handle_packet(self, packet) -> None:
         """Handles different packet types and places actions into the appropriate queues."""
         if packet.type == HEALTH:
-            logger.debug("HEALTH PACKET Received")
-            await self.health_buffer.put(True)
+            logger.debug(f"HEALTH PACKET Received: P {packet.p_health} S {packet.s_health}")
+            logger.info(f"Echoing health packet back...")
+            await self.relay_server_send_buffer.put(packet.to_bytes())
         elif packet.type == GUN:
-            logger.debug("GUN PACKET Received")
-            await self.gun_buffer.put(True)
+            logger.debug(f"GUN PACKET Received: AMMO {packet.ammo}")
+            logger.info(f"Echoing ammo packet back...")
+            await self.relay_server_send_buffer.put(packet.to_bytes())
         elif packet.type == IMU:
-            logger.debug("IMU PACKET Received")
-            await self.ai_engine_read_buffer.put(packet)
+            logger.debug(f"IMU PACKET Received: Gun_ax {packet.gun_ax} Gun_ay {packet.gun_ay} Gun_az {packet.gun_az} Gun_gx {packet.gun_gx} Gun_gy {packet.gun_gy} Gun_gz {packet.gun_gz} Glove_ax {packet.glove_ax} Glove_ay {packet.glove_ay} Glove_az {packet.glove_az} Glove_gx {packet.glove_gx} Glove_gy {packet.glove_gy} Glove_gz {packet.glove_gz}")
         else:
             logger.debug(f"Invalid packet type received: {packet.type}")
 
