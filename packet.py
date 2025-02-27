@@ -1,16 +1,16 @@
 from logger import get_logger 
+import struct
+import sys
 
 logger = get_logger(__name__)
 
-IMU = 0x0
-GUN = 0x1
-HEALTH = 0x2
+IMU = 2
+GUN = 3
+HEALTH = 4
 
 class PacketFactory:
     def create_packet(packet_byte_array: bytearray):
-        if len(packet_byte_array) < 20:
-            raise ValueError("Invalid packet size. Expected 20 bytes.")
-        
+        logger.debug(f"Packet = {packet_byte_array}")
         packet_type = packet_byte_array[0]
         logger.debug(f"Packet_type = {packet_type}")
         if packet_type == IMU:
@@ -26,71 +26,80 @@ class ImuPacket:
     def __init__(self, byteArray=None) -> None:
         self.type = IMU
         if byteArray is None:
-            self.ax = bytearray(2)
-            self.ay = bytearray(2)
-            self.az = bytearray(2)
-            self.gx = bytearray(2)
-            self.gy = bytearray(2)
-            self.gz = bytearray(2)
-            self.padding = bytearray(7) # Ensure total 20 bytes
+            self.seq = bytearray(1)
+            self.gun_ax = bytearray(2)
+            self.gun_ay = bytearray(2)
+            self.gun_az = bytearray(2)
+            self.gun_gx = bytearray(2)
+            self.gun_gy = bytearray(2)
+            self.gun_gz = bytearray(2)
+            self.glove_ax = bytearray(2)
+            self.glove_ay = bytearray(2)
+            self.glove_az = bytearray(2)
+            self.glove_gx = bytearray(2)
+            self.glove_gy = bytearray(2)
+            self.glove_gz = bytearray(2) # Total 25 byte
         else:
-            self.ax = byteArray[1:3]
-            self.ay = byteArray[3:5]
-            self.az = byteArray[5:7]
-            self.gx = byteArray[7:9]
-            self.gy = byteArray[9:11]
-            self.gz = byteArray[11:13]
-            self.padding = byteArray[13:]
+            self.seq = byteArray[1]
+            self.gun_ax = struct.unpack('<h',byteArray[2:4])[0]
+            self.gun_ay = struct.unpack('<h',byteArray[4:6])[0]
+            self.gun_az = struct.unpack('<h',byteArray[6:8])[0]
+            self.gun_gx = struct.unpack('<h',byteArray[8:10])[0]
+            self.gun_gy = struct.unpack('<h',byteArray[10:12])[0]
+            self.gun_gz = struct.unpack('<h',byteArray[12:14])[0]
+            self.glove_ax = struct.unpack('<h',byteArray[14:16])[0]
+            self.glove_ay = struct.unpack('<h',byteArray[16:18])[0]
+            self.glove_az = struct.unpack('<h',byteArray[18:20])[0]
+            self.glove_gx = struct.unpack('<h',byteArray[20:22])[0] 
+            self.glove_gy = struct.unpack('<h',byteArray[22:24])[0]
+            self.glove_gz = struct.unpack('<h',byteArray[24:26])[0]
 
-    def to_bytes(self) -> bytearray:
-        byte_array = bytearray()
-        byte_array.append(self.type)
-        byte_array.extend(self.ax)
-        byte_array.extend(self.ay)
-        byte_array.extend(self.az)
-        byte_array.extend(self.gx)
-        byte_array.extend(self.gy)
-        byte_array.extend(self.gz)
-        byte_array.extend(self.padding)
-
-        return byte_array
-
+    def __len__(self):
+        return sys.getsizeof(self)
+        # return len(self.type) + len(self.seq) + len(self.gun_ax) + len(self.gun_ay) + len(self.gun_az) + len(self.gun_gx) + len(self.gun_gy) + len(self.gun_gz) + len(self.glove_ax) + len(self.glove_ay) + len(self.glove_az) + len(self.glove_gx) + len(self.glove_gy) + len(self.glove_gz)
 
 class GunPacket:
     def __init__(self, byteArray=None) -> None:
         self.type = GUN
         if byteArray is None:
-            self.shoot = 0x0
-            self.padding = bytearray(18) # Ensure total 20 bytes
+            self.player = bytearray(1) # Device ID -> Mapped to player
+            self.ammo = bytearray(1)
         else:
-            self.shoot = byteArray[1]
-            self.padding = byteArray[2:]
+            self.player = byteArray[1]
+            self.ammo = byteArray[2]
 
     def to_bytes(self) -> bytearray:
         byte_array = bytearray()
         byte_array.append(self.type)  # Ensure correct type
-        byte_array.append(self.shoot)  # Ensure correct single-byte value
-        byte_array.extend(self.padding)  # Explicit padding to 20 bytes
+        byte_array.append(self.player) # Single-byte health values
+        byte_array.append(self.ammo)  # Ensure correct single-byte value
         return byte_array
+    
+    def __len__(self):
+        return sys.getsizeof(self)
+        # return len(self.type) + len(self.player) + len(self.ammo)
 
 
 class HealthPacket:
     def __init__(self, byteArray=None) -> None:
         self.type = HEALTH
         if byteArray is None:
-            self.p1_health = 0x0
-            self.p2_health = 0x0
-            self.padding = bytearray(17) # Ensure total 20 bytes
+            self.player = bytearray(1) # Device ID -> Mapped to player
+            self.p_health = bytearray(1)
+            self.s_health = bytearray(1)
         else:
-            self.p1_health = byteArray[1]
-            self.p2_health = byteArray[2]
-            self.padding = byteArray[3:]
+            self.player = byteArray[1]
+            self.p_health = byteArray[2]
+            self.s_health = byteArray[3]
 
     def to_bytes(self) -> bytearray:
         byte_array = bytearray()
         byte_array.append(self.type)  # Ensure correct type
-        byte_array.append(self.p1_health) # Single-byte health values
-        byte_array.append(self.p2_health)
-        byte_array.extend(self.padding)  # Explicit padding to 20 bytes
+        byte_array.append(self.player) # Single-byte health values
+        byte_array.append(self.p_health)
+        byte_array.append(self.s_health)
         return byte_array
-
+    
+    def __len__(self):
+        return sys.getsizeof(self)
+        # return len(self.type) + len(self.player) + len(self.p_health) + len(self.s_health)
