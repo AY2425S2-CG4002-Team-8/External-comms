@@ -93,4 +93,3 @@ class HealthPacket:
         byte_array.append(self.p2_health)
         byte_array.extend(self.padding)  # Explicit padding to 20 bytes
         return byte_array
-

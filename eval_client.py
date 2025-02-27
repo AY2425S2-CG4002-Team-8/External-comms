@@ -44,3 +44,4 @@ class EvalClient:
             raise
         finally:
             await self.tcp_client.close_connection()
+            

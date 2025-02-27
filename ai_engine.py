@@ -181,7 +181,7 @@ class AiEngine:
             }
         }
 
-    def get_data(self, data):
+    def get_data(self, data) -> dict[str, list[int]]:
         """
         Converts a list of PacketImu objects into a combined input list for the AI.
         """
@@ -232,6 +232,10 @@ class AiEngine:
         )
 
     async def predict(self):
+        """
+        Collects self.PREDICTION_DATA_POINTS packets to form a dictionary of arrays (current implementation) for AI inference
+        AI inference is against hardcoded dummy IMU data
+        """
         data = []
         try:
             while True:

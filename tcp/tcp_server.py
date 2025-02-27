@@ -145,3 +145,4 @@ class TcpServer:
         
         except Exception as e:
             logger.error(f"Failed to close client connection from: {host_name}")
+            
