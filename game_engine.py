@@ -86,7 +86,7 @@ class GameEngine:
     async def initiate_relay_server(self):
         relay_server = RelayServer(
             secret_key=SECRET_KEY,
-            host=HOST,
+            host="",
             port=RELAY_SERVER_PORT,
             read_buffer=self.relay_server_read_buffer,
             send_buffer=self.relay_server_send_buffer
