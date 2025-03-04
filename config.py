@@ -1,7 +1,7 @@
 SECRET_KEY="8888888888888888"
 HOST="127.0.0.1"
 MQTT_HOST="175.41.155.178"
-MQTT_PORT=9001
+MQTT_PORT=4100
 SEND_TOPICS = ["GE/Vis/actions", "GE/Vis/connections", "M2MQTT_Unity/test"]
 READ_TOPICS = ["Vis/GE/sight", "Vis/GE/avalanche", "M2MQTT_Unity/publish"]
 MQTT_BASE_RECONNECT_DELAY=1
