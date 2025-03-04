@@ -32,7 +32,7 @@ class MqttClient:
         Once connected set client and isConnected, and run produce and consume tasks
         """
         try:
-            async with aiomqtt.Client(self.host, self.port) as client:
+            async with aiomqtt.Client(self.host, self.port, transport="websockets", websocket_path="/") as client:
                 self.client = client
                 self.isConnected = True
                 logger.info(f"Connected to MQTT broker at {self.host}:{self.port}")
@@ -109,7 +109,7 @@ class MqttClient:
                 logger.info(f"Successfully reconnected to server with (host, port): ({self.host}, {self.port})")
                 return
             except Exception as e:
-                logger.info(f"TCP Client Connection failed: {e}. Retrying in {current_reconnect_delay} seconds...")
+                logger.info(f"MQTT Client Connection failed: {e}. Retrying in {current_reconnect_delay} seconds...")
             current_reconnect_delay = min(2 ** attempt, self.max_reconnect_delay)
             await asyncio.sleep(current_reconnect_delay)
 

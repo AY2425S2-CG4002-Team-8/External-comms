@@ -1,3 +1,7 @@
+from logger import get_logger
+
+logger = get_logger(__name__)
+
 class GameState:
     def __init__(self):
         self.player_1 = Player()
@@ -19,11 +23,8 @@ class GameState:
         player.set_state(bullets_remaining, bombs_remaining, hp, num_deaths,
                          num_unused_shield, shield_health)
 
-    def perform_action(self, action, player_id, fov):
+    def perform_action(self, action, player_id, fov, snow_number):
         """use the user sent action to alter the game state"""
-
-        # perform sanity check to see if our function handles all the actions
-        all_actions = {"gun", "shield", "bomb", "reload", "badminton", "golf", "fencing", "boxing"}
 
         if player_id == 1:
             attacker            = self.player_1
@@ -33,7 +34,7 @@ class GameState:
             opponent            = self.player_1
 
         can_see = fov
-        attacker.rain_damage(opponent, can_see)
+        attacker.rain_damage(opponent, can_see, snow_number)
 
         # perform the actual action
         if action == "gun":
@@ -47,13 +48,37 @@ class GameState:
         elif action in {"badminton", "golf", "fencing", "boxing"}:
             # all these have the same behaviour
             attacker.harm_AI(opponent, can_see)
-        elif action == "logout":
-            # has no change in game state
-            pass
         else:
-            # invalid action we do nothing
+            # logout & invalid action we do nothing
             pass
 
+class VisualiserState:
+    """
+    Manages the FOV data of the opponent.
+    Visualiser periodically updates with opponent FOV data which will be reflected as an encapsulated attribute of this class. 
+    """
+    def __init__(self):
+        self.fov = False
+        self.snow_number = 0
+
+    def set_fov(self, fov: bool):
+        self.fov = fov
+
+    def set_snow_number(self, snow_number: int):
+        self.snow_number = snow_number
+
+    def get_fov(self):
+        return self.fov
+    
+    def get_snow_number(self):
+        return self.snow_number
+    
+    def handle_fov(self, fov_data: str) -> None:
+        if not int(fov_data):
+            self.set_fov(False)
+        else:
+            self.set_fov(True)
+            
 class Player:
     def __init__(self):
         # Constants
@@ -74,8 +99,6 @@ class Player:
         self.hp_shield = 0
         self.num_deaths = 0
         self.num_shield = self.max_shields
-
-        self.rain_list = []  # list of quadrants where rain/snow has been started by the bomb of this player
 
     def __str__(self):
         return str(self.to_dict())
@@ -98,7 +121,7 @@ class Player:
         self.num_shield     = num_unused_shield
         self.num_deaths     = num_deaths
 
-    #TODO: Attain ammo data from the gun packet + Health from health packet
+    #TODO: Attain ammo data from the gun packet + health from health packet
     def shoot(self, opponent):
         if self.num_bullets <= 0:
             return
@@ -145,14 +168,14 @@ class Player:
             break
 
     #TODO: Implement rain_damage
-    def rain_damage(self, opponent, can_see):
+    def rain_damage(self, opponent, can_see, snow_number):
         """
         Whenever an opponent walks into a quadrant we need to reduce the health
         based on the number of rains/snow
         """
-        if can_see:
-            for p in self.rain_list:
-                opponent.damage(self.hp_rain)
+        while can_see and snow_number > 0:
+            opponent.damage(self.hp_rain)
+            snow_number -= 1
 
     def harm_AI(self, opponent, can_see):
         """ We can harm am opponent based on our AI action if we can see them"""
