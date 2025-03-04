@@ -104,7 +104,11 @@ class TcpServer:
     
     async def send_message(self, writer, message):
         try:
-            writer.write(f"{len(message)}_".encode() + message.encode())
+            if isinstance(message, str):
+                message = message.encode('utf-8')
+            elif isinstance(message, bytearray):
+                message = bytes(message)
+            writer.write(f"{len(message)}_".encode() + message)
             await writer.drain()
             logger.info(f"Sent message to client {writer.get_extra_info('peername')}")
         
@@ -145,4 +149,3 @@ class TcpServer:
         
         except Exception as e:
             logger.error(f"Failed to close client connection from: {host_name}")
-            
