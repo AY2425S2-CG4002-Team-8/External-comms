@@ -5,39 +5,11 @@ from eval_client import EvalClient
 from packet import PacketFactory, IMU, HEALTH, GUN
 from relay_server import RelayServer
 from ai_engine import AiEngine
-from game_state import GameState
-from fov_manager import FOVManager
-from config import SECRET_KEY, HOST, MQTT_HOST, MQTT_PORT, SEND_TOPICS, READ_TOPICS
+from game_state import GameState, VisualiserState
+from config import SECRET_KEY, HOST, MQTT_HOST, MQTT_PORT, SEND_TOPICS, READ_TOPICS, MQTT_BASE_RECONNECT_DELAY, MQTT_MAX_RECONNECT_DELAY, MQTT_MAX_RECONNECT_ATTEMPTS, RELAY_SERVER_PORT
 from logger import get_logger
 
 logger = get_logger(__name__)
-
-# class GameState:
-#     def __init__(self):
-#         self.p1 = {
-#             'player_id': 1,
-#             'action': None,
-#             'state': {
-#                 'hp': 100,
-#                 'bullets': 6,
-#                 'bombs': 2,
-#                 'shield_hp': 0,
-#                 'deaths': 0,
-#                 'shields': 3
-#             }
-#         }
-#         self.p2 = {
-#             'player_id': 2,
-#             'action': None,
-#             'state': {
-#                 'hp': 100,
-#                 'bullets': 6,
-#                 'bombs': 2,
-#                 'shield_hp': 0,
-#                 'deaths': 0,
-#                 'shields': 3
-#             }
-#         }
 
 class GameEngine:
     def __init__(self, port):
@@ -46,8 +18,8 @@ class GameEngine:
         self.port = port
 
         self.game_state = GameState()
-        self.p1_fov_manager = FOVManager()
-        # self.p2_fov_manager = FOVManager()
+        self.p1_visualiser_state = VisualiserState()
+        self.p2_visualiser_state = VisualiserState()
 
         self.eval_client_read_buffer = asyncio.Queue()
         self.eval_client_send_buffer = asyncio.Queue()
@@ -82,27 +54,48 @@ class GameEngine:
             'shields': 3
         }
 
-    async def initiate_mqtt(self) -> None:
+    async def initiate_mqtt(self):
         try:
-            mqtt_client = MqttClient(MQTT_HOST, MQTT_PORT, self.visualiser_read_buffer, self.visualiser_send_buffer, SEND_TOPICS, READ_TOPICS, 1, 60, 10)
+            mqtt_client = MqttClient(
+                host=MQTT_HOST,
+                port=MQTT_PORT,
+                read_buffer=self.visualiser_read_buffer,
+                send_buffer=self.visualiser_send_buffer,
+                send_topics=SEND_TOPICS,
+                read_topics=READ_TOPICS,
+                base_reconnect_delay=MQTT_BASE_RECONNECT_DELAY,
+                max_reconnect_delay=MQTT_MAX_RECONNECT_DELAY,
+                max_reconnect_attempts=MQTT_MAX_RECONNECT_ATTEMPTS
+            )
             logger.debug("Starting MQTT")
             await mqtt_client.run()
         except:
             logger.error("Failed to run MQTT Task")
 
-    async def initiate_eval_client(self) -> None:
-        eval_client = EvalClient(self.secret_key, self.host, self.port, self.eval_client_read_buffer, self.eval_client_send_buffer)
+    async def initiate_eval_client(self):
+        eval_client = EvalClient(
+            secret_key=SECRET_KEY,
+            host=HOST,
+            port=self.port,
+            eval_client_read_buffer=self.eval_client_read_buffer,
+            eval_client_send_buffer=self.eval_client_send_buffer
+        )
         logger.debug("Starting Eval_Client")
         await eval_client.run()
 
-    async def initiate_relay_server(self) -> None:
-        relay_server_port = 8080
-        relay_server = RelayServer(self.secret_key, self.host, relay_server_port, self.relay_server_read_buffer, self.relay_server_send_buffer)
+    async def initiate_relay_server(self):
+        relay_server = RelayServer(
+            secret_key=SECRET_KEY,
+            host=HOST,
+            port=RELAY_SERVER_PORT,
+            read_buffer=self.relay_server_read_buffer,
+            send_buffer=self.relay_server_send_buffer
+        )
         logger.debug("Starting Relay Server")
         await relay_server.run()
 
-    async def initiate_ai_engine(self) -> None:
-        ai_engine = AiEngine(self.ai_engine_read_buffer, self.ai_engine_write_buffer)
+    async def initiate_ai_engine(self):
+        ai_engine = AiEngine(read_buffer=self.ai_engine_read_buffer, write_buffer=self.ai_engine_write_buffer)
         logger.debug("Starting AI Engine")
         await ai_engine.run()
 
@@ -180,18 +173,20 @@ class GameEngine:
                 mqtt_message = f"{mqtt_prefix}{action}"
                 await self.visualiser_send_buffer.put(mqtt_message)
                 if action != "gun":
-                    fov = self.p1_fov_manager.get_fov()
-                    # fov = self.p2_fov_manager.get_fov()
+                    fov = self.p1_visualiser_state.get_fov()
+                    # fov = self.p2_visualiser_state.get_fov()
                 # Considered passing in fov manager instance but this is a synchronous function
-                self.game_state.perform_action(action, 1, fov)
-                eval_data = self.generate_game_state(fov, action)
+                snow_number = self.p1_visualiser_state.get_snow_number()
+                # snow_number = self.p2_visualiser_state.get_snow_number()
+                self.game_state.perform_action(action, 1, fov, snow_number)
+                eval_data = self.generate_game_state(action)
                 await self.eval_client_send_buffer.put(json.dumps(eval_data))
 
             except Exception as e:
                 logger.error(f"Exception in process: {e}")
                 raise
     
-    def generate_game_state(self, fov: bool, predicted_action: str) -> json:
+    def generate_game_state(self, predicted_action: str) -> json:
         logger.debug(f"Generating game state with action: {predicted_action}")
         eval_data = {
             'player_id': 1, 
@@ -230,9 +225,9 @@ class GameEngine:
                     raise
                 player, fov = fov_data
                 if player == "p1":
-                    self.p1_fov_manager.handle_fov(fov)
+                    self.p1_visualiser_state.handle_fov(fov)
                 else:
-                    self.p2_fov_manager.handle_fov(fov)
+                    self.p2_visualiser_state.handle_fov(fov)
             except Exception as e:
                 logger.error(f"Error in update_fov: {e}")
 
