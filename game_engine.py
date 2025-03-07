@@ -2,7 +2,7 @@ import asyncio
 import json
 from mqtt.mqtt_client import MqttClient
 from eval_client import EvalClient
-from packet import PacketFactory, IMU, HEALTH, GUN
+from packet import GunPacket, HealthPacket, PacketFactory, IMU, HEALTH, GUN
 from relay_server import RelayServer
 from ai_engine import AiEngine
 from game_state import GameState, VisualiserState
@@ -157,6 +157,10 @@ class GameEngine:
                 mqtt_message = self.generate_mqtt_message(1, action, hit)
                 logger.info(f"Sending action to topic {ACTION_TOPIC} on visualiser: {mqtt_message}")
                 await self.visualiser_send_buffer.put((ACTION_TOPIC, mqtt_message))
+                for _ in range(self.p1_visualiser_state.get_snow_number()):
+                    mqtt_message = self.generate_mqtt_message(1, "avalanche", hit)
+                    logger.info(f"Sending action to topic {ACTION_TOPIC} on visualiser: {mqtt_message}")
+                    await self.visualiser_send_buffer.put((ACTION_TOPIC, mqtt_message))
                 eval_data = self.generate_game_state(action)
                 logger.info(f"Sending eval data to eval_client: {eval_data}")
                 await self.eval_client_send_buffer.put(eval_data)
@@ -181,6 +185,8 @@ class GameEngine:
 
         return json.dumps(action_payload)
 
+    # def publish_to_visualiser(self, topic: str, message: str) -> None:
+
 
     def generate_game_state(self, predicted_action: str) -> json:
         logger.debug(f"Generating game state with action: {predicted_action}")
@@ -193,6 +199,34 @@ class GameEngine:
 
         return json.dumps(eval_data)
 
+   # {"p1": {"hp": 100, "bullets": 6, "bombs": 2, "shield_hp": 0, "deaths": 0, "shields": 3}, "p2": {"hp": 100, "bullets": 6, "bombs": 2, "shield_hp": 0, "deaths": 0, "shields": 3}}
+    async def send_packets_to_relay(self, game_state: dict) -> None:
+        game_state = json.dumps(game_state)
+        p1_gun_packet = GunPacket()
+        p1_gun_packet.player = 1
+        p1_gun_packet.ammo = game_state['p1']['bullets']
+        logger.info(f"Sending ammo packet to relay server: {p1_gun_packet}")
+        p2_gun_packet = GunPacket()
+        p2_gun_packet.player = 4
+        p2_gun_packet.ammo = game_state['p2']['bullets']
+        logger.info(f"Sending ammo packet to relay server: {p2_gun_packet}")
+
+        p1_health_packet = HealthPacket()
+        p1_health_packet.player = 3
+        p1_health_packet.p_health = game_state['p1']['hp']
+        p1_health_packet.s_health = game_state['p1']['shield_hp']
+        logger.info(f"Sending health packet to relay server: {p1_health_packet}")
+        p2_health_packet = HealthPacket()
+        p2_health_packet.player = 6
+        p2_health_packet.p_health = game_state['p2']['hp']
+        p2_health_packet.s_health = game_state['p2']['shield_hp']
+        logger.info(f"Sending health packet to relay server: {p2_health_packet}")
+
+        await self.relay_server_send_buffer.put(p1_gun_packet.to_bytes())
+        await self.relay_server_send_buffer.put(p2_gun_packet.to_bytes())
+        await self.relay_server_send_buffer.put(p1_health_packet.to_bytes())
+        await self.relay_server_send_buffer.put(p2_health_packet.to_bytes())
+        
     async def eval_process(self) -> None:
         """
         Listens to eval_client_read_buffer for eval_server updates
@@ -201,10 +235,9 @@ class GameEngine:
         while True:
             game_state = await self.eval_client_read_buffer.get()
             logger.info(f"Received game state data from eval_server = {game_state}")
-
+            await self.send_packets_to_relay(game_state)
             logger.info(f"Sending game state to relay node")
-            await self.relay_server_send_buffer.put(game_state)
-            
+            # await self.relay_server_send_buffer.put(game_state)
             null_action, null_hit = None, None
             mqtt_message = self.generate_mqtt_message(1, null_action, null_hit)
             logger.info("Sending game state to visualiser")
