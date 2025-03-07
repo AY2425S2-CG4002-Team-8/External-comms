@@ -54,6 +54,25 @@ class ImuPacket:
             self.glove_gy = struct.unpack('<h',byteArray[22:24])[0]
             self.glove_gz = struct.unpack('<h',byteArray[24:26])[0]
 
+    def to_bytes(self) -> bytes:
+        """Convert ImuPacket to bytes for transmission."""
+        return (
+            struct.pack('<B', self.type)
+            + struct.pack('<B', self.seq)
+            + struct.pack('<h', self.gun_ax)
+            + struct.pack('<h', self.gun_ay)
+            + struct.pack('<h', self.gun_az)
+            + struct.pack('<h', self.gun_gx)
+            + struct.pack('<h', self.gun_gy)
+            + struct.pack('<h', self.gun_gz)
+            + struct.pack('<h', self.glove_ax)
+            + struct.pack('<h', self.glove_ay)
+            + struct.pack('<h', self.glove_az)
+            + struct.pack('<h', self.glove_gx)
+            + struct.pack('<h', self.glove_gy)
+            + struct.pack('<h', self.glove_gz)
+        )
+
     def __len__(self):
         return sys.getsizeof(self)
         # return len(self.type) + len(self.seq) + len(self.gun_ax) + len(self.gun_ay) + len(self.gun_az) + len(self.gun_gx) + len(self.gun_gy) + len(self.gun_gz) + len(self.glove_ax) + len(self.glove_ay) + len(self.glove_az) + len(self.glove_gx) + len(self.glove_gy) + len(self.glove_gz)

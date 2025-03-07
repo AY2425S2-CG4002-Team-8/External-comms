@@ -23,7 +23,7 @@ class GameState:
         player.set_state(bullets_remaining, bombs_remaining, hp, num_deaths,
                          num_unused_shield, shield_health)
 
-    def perform_action(self, action, player_id, fov, snow_number):
+    def perform_action(self, action, player_id, visualiser_state) -> bool:
         """use the user sent action to alter the game state"""
 
         if player_id == 1:
@@ -33,7 +33,8 @@ class GameState:
             attacker            = self.player_2
             opponent            = self.player_1
 
-        can_see = fov
+        fov, snow_number = visualiser_state.get_fov(), visualiser_state.get_snow_number()
+        can_see = fov if action != "gun" else True
         attacker.rain_damage(opponent, can_see, snow_number)
 
         # perform the actual action
@@ -51,6 +52,8 @@ class GameState:
         else:
             # logout & invalid action we do nothing
             pass
+        
+        return fov
 
 class VisualiserState:
     """
@@ -58,7 +61,7 @@ class VisualiserState:
     Visualiser periodically updates with opponent FOV data which will be reflected as an encapsulated attribute of this class. 
     """
     def __init__(self):
-        self.fov = False
+        self.fov = True
         self.snow_number = 0
 
     def set_fov(self, fov: bool):

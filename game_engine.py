@@ -6,7 +6,7 @@ from packet import PacketFactory, IMU, HEALTH, GUN
 from relay_server import RelayServer
 from ai_engine import AiEngine
 from game_state import GameState, VisualiserState
-from config import SECRET_KEY, HOST, MQTT_HOST, MQTT_PORT, SEND_TOPICS, READ_TOPICS, MQTT_BASE_RECONNECT_DELAY, MQTT_MAX_RECONNECT_DELAY, MQTT_MAX_RECONNECT_ATTEMPTS, RELAY_SERVER_PORT
+from config import SECRET_KEY, HOST, MQTT_HOST, MQTT_PORT, SEND_TOPICS, READ_TOPICS, MQTT_BASE_RECONNECT_DELAY, MQTT_MAX_RECONNECT_DELAY, MQTT_MAX_RECONNECT_ATTEMPTS, RELAY_SERVER_PORT, ACTION_TOPIC
 from logger import get_logger
 
 logger = get_logger(__name__)
@@ -153,25 +153,35 @@ class GameEngine:
             try:
                 action = await self.event_buffer.get()
                 logger.info(f"action: {action}")
-                mqtt_prefix = "gun_" if action == "gun" else "action_"
-                fov = True
-                
-                mqtt_message = f"{mqtt_prefix}{action}"
-                await self.visualiser_send_buffer.put(mqtt_message)
-                if action != "gun":
-                    fov = self.p1_visualiser_state.get_fov()
-                    # fov = self.p2_visualiser_state.get_fov()
-                # Considered passing in fov manager instance but this is a synchronous function
-                snow_number = self.p1_visualiser_state.get_snow_number()
-                # snow_number = self.p2_visualiser_state.get_snow_number()
-                self.game_state.perform_action(action, 1, fov, snow_number)
+                hit = self.game_state.perform_action(action, 1, self.p1_visualiser_state)
+                mqtt_message = self.generate_mqtt_message(1, action, hit)
+                logger.info(f"Sending action to topic {ACTION_TOPIC} on visualiser: {mqtt_message}")
+                await self.visualiser_send_buffer.put((ACTION_TOPIC, mqtt_message))
                 eval_data = self.generate_game_state(action)
-                await self.eval_client_send_buffer.put(json.dumps(eval_data))
+                logger.info(f"Sending eval data to eval_client: {eval_data}")
+                await self.eval_client_send_buffer.put(eval_data)
 
             except Exception as e:
                 logger.error(f"Exception in process: {e}")
                 raise
-    
+    # public class ActionPayload
+    #     {
+    #         public int player;
+    #         public string action;
+    #         public bool hit;
+    #         public GameState game_state;
+    #     }
+    def generate_mqtt_message(self, player: int, action: str, hit: bool) -> json:
+        action_payload = {
+            'player': player,
+            'action': action,
+            'hit': hit,
+            'game_state': self.game_state.to_dict()
+        }
+
+        return json.dumps(action_payload)
+
+
     def generate_game_state(self, predicted_action: str) -> json:
         logger.debug(f"Generating game state with action: {predicted_action}")
         eval_data = {
@@ -181,7 +191,7 @@ class GameEngine:
         }
         logger.info(f"Generated eval data: {eval_data}")
 
-        return eval_data
+        return json.dumps(eval_data)
 
     async def eval_process(self) -> None:
         """
@@ -195,25 +205,26 @@ class GameEngine:
             logger.info(f"Sending game state to relay node")
             await self.relay_server_send_buffer.put(game_state)
             
-            mqtt_message = "state_" + game_state
+            null_action, null_hit = None, None
+            mqtt_message = self.generate_mqtt_message(1, null_action, null_hit)
             logger.info("Sending game state to visualiser")
-            await self.visualiser_send_buffer.put(mqtt_message)
+            await self.visualiser_send_buffer.put((ACTION_TOPIC, mqtt_message))
 
-    async def fov_process(self) -> None:
+    async def visualiser_state_process(self) -> None:
         while True:
             try:
                 # Can consider 2 topics for p1, p2 to avoid congestion
                 # For now single topic string parse
-                fov_data = await self.visualiser_fov_read_buffer.get()
-                fov_data = fov_data.split("_")
-                if len(fov) != 2:
-                    logger.error(f"Invalid FOV data received: {fov}")
-                    raise
-                player, fov = fov_data
-                if player == "p1":
-                    self.p1_visualiser_state.handle_fov(fov)
-                else:
-                    self.p2_visualiser_state.handle_fov(fov)
+                sight_payload = await self.visualiser_read_buffer.get()
+                sight_payload = json.loads(sight_payload)
+                player, fov, snow_number = sight_payload['player'], sight_payload['in_sight'], sight_payload['avalanche']
+                if player == 1:
+                    self.p1_visualiser_state.set_fov(fov)
+                    self.p1_visualiser_state.set_snow_number(snow_number)
+                elif player == 2:
+                    self.p2_visualiser_state.set_fov(fov)
+                    self.p2_visualiser_state.set_snow_number(snow_number)
+                logger.info(f"Updated p1 visualiser state: {self.p1_visualiser_state.get_fov()}, {self.p1_visualiser_state.get_snow_number()}")
             except Exception as e:
                 logger.error(f"Error in update_fov: {e}")
 
@@ -233,7 +244,8 @@ class GameEngine:
             asyncio.create_task(self.gun_process()),
             asyncio.create_task(self.prediction_process()),
             asyncio.create_task(self.eval_process()),
-            asyncio.create_task(self.process())
+            asyncio.create_task(self.process()),
+            asyncio.create_task(self.visualiser_state_process())
         ]
         try:
             await asyncio.gather(*self.tasks)
