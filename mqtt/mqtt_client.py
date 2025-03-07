@@ -32,7 +32,7 @@ class MqttClient:
         Once connected set client and isConnected, and run produce and consume tasks
         """
         try:
-            async with aiomqtt.Client(self.host, self.port, transport="websockets", websocket_path="/") as client:
+            async with aiomqtt.Client(self.host, self.port) as client:
                 self.client = client
                 self.isConnected = True
                 logger.info(f"Connected to MQTT broker at {self.host}:{self.port}")
@@ -47,8 +47,16 @@ class MqttClient:
         except Exception as e:
             logger.error(f"Error ocurred when running MQTT: {e}")
             raise
+
+    async def publish(self, topic, message) -> None:
+        """ Publishes message to all topics that it should be published to """
+        if self.client and self.isConnected:
+            await self.client.publish(topic, message)
+            logger.info(f"Published message '{message}' to topic '{topic}'")
+        else:
+            logger.warning("Not connected to MQTT broker to publish")
     
-    async def publish(self, message) -> None:
+    async def broadcast(self, message) -> None:
         """ Publishes message to all topics that it should be published to """
         if self.client and self.isConnected:
             for topic in self.send_topics:
@@ -73,8 +81,8 @@ class MqttClient:
         """ Coroutine that asynchronously publishes all messages from send_buffer to all relevant topics """
         while self.isConnected:
             try:
-                message = await self.send_buffer.get()
-                await self.publish(message)
+                topic, message = await self.send_buffer.get()
+                await self.publish(topic, message)
             except (aiomqtt.MqttError, aiomqtt.MqttCodeError) as e:
                 logger.error(f"MQTT publish error: {e}. Disconnecting produce.")
                 self.connected = False
