@@ -212,13 +212,12 @@ class AiEngine:
                         data.append(packet)
                         logger.debug(f"IMU packet: {packet}. Received: {len(data)}/{self.PREDICTION_DATA_POINTS}")
                     except asyncio.TimeoutError:
-                        logger.warning(f"Exceeded time threshold for packet - predicting with window size: {len(data)}")
                         break
 
                 # If data buffer is empty, we skip processing and continue to the next iteration
                 if not data:
                     continue
-
+                logger.warning(f"Predicting with window size: {len(data)}")
                 data_dictionary = self.get_data(data)
                 predicted_data = self.classify(data_dictionary)
                 logger.debug(f"AI Engine Prediction: {predicted_data}")
