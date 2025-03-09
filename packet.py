@@ -7,6 +7,7 @@ logger = get_logger(__name__)
 IMU = 2
 GUN = 3
 HEALTH = 4
+CONNECTION = 5
 
 class PacketFactory:
     def create_packet(packet_byte_array: bytearray):

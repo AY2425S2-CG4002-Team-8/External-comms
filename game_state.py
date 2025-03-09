@@ -22,38 +22,50 @@ class GameState:
             player = self.player_2
         player.set_state(bullets_remaining, bombs_remaining, hp, num_deaths,
                          num_unused_shield, shield_health)
+        
+    def perform_avalanche(self, player_id, fov, snow_number) -> None:
+        if player_id == 1:
+            attacker = self.player_1
+            opponent = self.player_2
+        else:
+            attacker = self.player_2
+            opponent = self.player_1
+        attacker.rain_damage(opponent, fov, snow_number)
 
-    def perform_action(self, action, player_id, visualiser_state) -> bool:
+        return snow_number
+
+    def perform_action(self, action, player_id, fov) -> bool:
         """use the user sent action to alter the game state"""
 
         if player_id == 1:
-            attacker            = self.player_1
-            opponent            = self.player_2
+            attacker = self.player_1
+            opponent = self.player_2
         else:
-            attacker            = self.player_2
-            opponent            = self.player_1
+            attacker = self.player_2
+            opponent = self.player_1
 
-        fov, snow_number = visualiser_state.get_fov(), visualiser_state.get_snow_number()
-        can_see = fov if action != "gun" else True
-        attacker.rain_damage(opponent, can_see, snow_number)
+        action_possible = True
+
+        if action == "miss":
+            return False, action_possible
 
         # perform the actual action
         if action == "gun":
-            attacker.shoot(opponent)
+            action_possible = attacker.shoot(opponent)
         elif action == "shield":
-            attacker.shield()
+            action_possible = attacker.shield()
         elif action == "reload":
-            attacker.reload()
+            action_possible = attacker.reload()
         elif action == "bomb":
-            attacker.bomb(opponent, can_see)
+            action_possible = attacker.bomb(opponent, fov)
         elif action in {"badminton", "golf", "fencing", "boxing"}:
             # all these have the same behaviour
-            attacker.harm_AI(opponent, can_see)
+            attacker.harm_AI(opponent, fov)
         else:
             # logout & invalid action we do nothing
             pass
         
-        return fov
+        return fov, action_possible
 
 class VisualiserState:
     """
@@ -125,11 +137,13 @@ class Player:
         self.num_deaths     = num_deaths
 
     #TODO: Attain ammo data from the gun packet + health from health packet
-    def shoot(self, opponent):
+    def shoot(self, opponent) -> bool:
         if self.num_bullets <= 0:
-            return
+            return False
         self.num_bullets -= 1
         opponent.damage(self.hp_bullet)
+
+        return True
 
     def damage(self, hp_reduction: int) -> None:
         # use the shield to protect the player
@@ -145,47 +159,47 @@ class Player:
             # if we die, we spawn immediately
             self.num_deaths += 1
             self.set_state(self.max_bullets, self.max_bombs, self.max_hp, self.num_deaths, self.max_shields, 0)
+        print("After damage: ", self.hp)
 
-    def shield(self):
+    def shield(self) -> bool:
         """Activate shield"""
         if self.num_shield <= 0 or self.hp_shield > 0:
-            return
+            return False
         self.hp_shield = self.max_shield_health
         self.num_shield -= 1
 
+        return True
+
     #TODO: Implement bomb, add the start to a rain/snow in the quadrant of the opponent
-    def bomb(self, opponent, can_see):
+    def bomb(self, opponent, fov: bool) -> bool:
         """Throw a bomb at opponent"""
-        while True:
-            # check the ammo
-            if self.num_bombs <= 0:
-                break
-            self.num_bombs -= 1
-
-            # check if the opponent is visible
-            if not can_see:
-                # this bomb will not start a rain/snow and hence has no effect with respect to gameplay
-                break
-
+        if self.num_bombs <= 0:
+            return False
+        self.num_bombs -= 1
+        if fov:
             opponent.damage(self.hp_bomb)
-            break
+
+        return True
 
     #TODO: Implement rain_damage
-    def rain_damage(self, opponent, can_see, snow_number):
+    def rain_damage(self, opponent, fov: bool, snow_number: int) -> None:
         """
         Whenever an opponent walks into a quadrant we need to reduce the health
         based on the number of rains/snow
         """
-        while can_see and snow_number > 0:
+        while fov and snow_number > 0:
             opponent.damage(self.hp_rain)
             snow_number -= 1
 
-    def harm_AI(self, opponent, can_see):
+    def harm_AI(self, opponent, fov):
         """ We can harm am opponent based on our AI action if we can see them"""
-        if can_see:
+        if fov:
             opponent.damage(self.hp_AI)
 
-    def reload(self):
+    def reload(self) -> bool:
         """ perform reload only if the magazine is empty"""
         if self.num_bullets <= 0:
             self.num_bullets = self.max_bullets
+            return True
+        
+        return False

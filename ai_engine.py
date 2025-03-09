@@ -1,5 +1,6 @@
 import asyncio
 import json
+import time
 
 from logger import get_logger
 
@@ -206,14 +207,18 @@ class AiEngine:
             while True:
                 data.clear()
                 while len(data) < self.PREDICTION_DATA_POINTS:
-                    packet = await self.read_buffer.get()
-                    data.append(packet)
-                    logger.debug(f"IMU packet: {packet}. Received: {len(data)}/{self.PREDICTION_DATA_POINTS}")
+                    try:
+                        packet = await asyncio.wait_for(self.read_buffer.get(), timeout=0.5)
+                        data.append(packet)
+                        logger.debug(f"IMU packet: {packet}. Received: {len(data)}/{self.PREDICTION_DATA_POINTS}")
+                    except asyncio.TimeoutError:
+                        logger.warning(f"Exceeded time threshold for packet - predicting with window size: {len(data)}")
+                        break
 
-                if len(data) != self.PREDICTION_DATA_POINTS:
-                    logger.debug(f"Packet size of {self.PREDICTION_DATA_POINTS} was not received")
+                # If data buffer is empty, we skip processing and continue to the next iteration
+                if not data:
                     continue
-                
+
                 data_dictionary = self.get_data(data)
                 predicted_data = self.classify(data_dictionary)
                 logger.debug(f"AI Engine Prediction: {predicted_data}")
