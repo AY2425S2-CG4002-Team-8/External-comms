@@ -46,14 +46,6 @@ class AiEngine:
         # Activate neural network IP module
         self.mlp.write(0x0, 0x81) # 0 (AP_START) to “1” and bit 7 (AUTO_RESTART) to “1”
 
-        # Allocate contiguous memory for transfer to PL
-        self.input_buffer = allocate(shape=(self.input_size,), dtype=np.float32)
-        self.output_buffer = allocate(shape=(self.output_size,), dtype=np.float32)
-
-    def __del__(self):
-        # Avoid memory leaks
-        del self.input_buffer, self.output_buffer
-
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Data Link with GE~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#   
 
     def get_data(self, data) -> dict[str, list[int]]: 
@@ -141,7 +133,6 @@ class AiEngine:
             roll_max = rolled.max()
             roll_min = rolled.min()
             roll_std = rolled.std()
-            roll_skew = rolled.skew() 
             new_row = []
             for i in range(1,int(self.PREDICTION_DATA_POINTS/self.window_size)):
                 new_row = new_row + [roll_mean[i], roll_max[i], roll_min[i], roll_std[i], roll_skew[i]]
@@ -181,10 +172,10 @@ class AiEngine:
         input_array = self.scaler.transform(df.drop("action", axis=1).to_numpy())
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~AI Inferencing~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#   
-
+        input_buffer = allocate(shape=(self.input_size,), dtype=np.float32)
+        output_buffer = allocate(shape=(self.output_size,), dtype=np.float32)
         for i in range(self.input_size):
             self.input_buffer[i] = input_array[i]
-
         self.dma_send.transfer(self.input_buffer)
         self.dma_recv.transfer(self.output_buffer)
         
@@ -205,6 +196,7 @@ class AiEngine:
 
         pred = np.argmax(softmax)
         pred_class = self.label_encoder.inverse_transform(pred)
+        del input_buffer, output_buffer
         return pred_class
     
     async def run(self) -> None:
