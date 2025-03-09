@@ -2,11 +2,11 @@ import asyncio
 import json
 from mqtt.mqtt_client import MqttClient
 from eval_client import EvalClient
-from packet import GunPacket, HealthPacket, PacketFactory, IMU, HEALTH, GUN
+from packet import CONNECTION, GunPacket, HealthPacket, PacketFactory, IMU, HEALTH, GUN
 from relay_server import RelayServer
 from ai_engine import AiEngine
 from game_state import GameState, VisualiserState
-from config import SECRET_KEY, HOST, MQTT_HOST, MQTT_PORT, SEND_TOPICS, READ_TOPICS, MQTT_BASE_RECONNECT_DELAY, MQTT_MAX_RECONNECT_DELAY, MQTT_MAX_RECONNECT_ATTEMPTS, RELAY_SERVER_PORT, ACTION_TOPIC
+from config import ACTION_AVALANCHE, CONNECTION_TOPIC, GUN_TIMEOUT, SECRET_KEY, HOST, MQTT_HOST, MQTT_PORT, SEND_TOPICS, READ_TOPICS, MQTT_BASE_RECONNECT_DELAY, MQTT_MAX_RECONNECT_DELAY, MQTT_MAX_RECONNECT_ATTEMPTS, RELAY_SERVER_PORT, ACTION_TOPIC
 from logger import get_logger
 
 logger = get_logger(__name__)
@@ -30,6 +30,7 @@ class GameEngine:
         self.relay_server_send_buffer = asyncio.Queue()
         self.ai_engine_read_buffer = asyncio.Queue()
         self.ai_engine_write_buffer = asyncio.Queue()
+        self.connection_buffer = asyncio.Queue()
         self.health_buffer = asyncio.Queue()
         self.gun_buffer = asyncio.Queue()
         self.imu_buffer = asyncio.Queue()
@@ -97,6 +98,9 @@ class GameEngine:
         elif packet.type == IMU:
             logger.debug(f"IMU PACKET Received: Gun_ax {packet.gun_ax} Gun_ay {packet.gun_ay} Gun_az {packet.gun_az} Gun_gx {packet.gun_gx} Gun_gy {packet.gun_gy} Gun_gz {packet.gun_gz} Glove_ax {packet.glove_ax} Glove_ay {packet.glove_ay} Glove_az {packet.glove_az} Glove_gx {packet.glove_gx} Glove_gy {packet.glove_gy} Glove_gz {packet.glove_gz}")
             await self.ai_engine_read_buffer.put(packet)
+        elif packet.type == CONNECTION:
+            logger.debug(f"CONNECTION PACKET Received: {packet}")
+            await self.connection_buffer.put(packet)
         else:
             logger.debug(f"Invalid packet type received: {packet.type}")
 
@@ -112,6 +116,20 @@ class GameEngine:
                 await self.handle_packet(packet)
             except Exception as e:
                 logger.error(f"Error in read_relay_node: {e}")
+
+    async def connection_process(self) -> None:
+        """
+        Listens to connection buffer for connection packets from the relay node.
+        Connection packets are heartbeats from the devices worn by different players to inform the game engine of their connection.
+        """
+        while True:
+            try:
+                connection_packet = await self.connection_buffer.get()
+                player, device = connection_packet.player, connection_packet.device
+                logger.info(f"Sending connection to visualiser: {player}, {device}")
+                await self.send_visualiser_connection(CONNECTION_TOPIC, player, device)
+            except Exception as e:
+                logger.error(f"Error in connection_process: {e}")
     
     async def gun_process(self) -> None:
         """
@@ -123,11 +141,12 @@ class GameEngine:
                 await self.gun_buffer.get()
                 logger.debug(f"Attempted to shoot")
                 try:
-                    await asyncio.wait_for(self.health_buffer.get(), timeout=0.3)
+                    await asyncio.wait_for(self.health_buffer.get(), timeout=GUN_TIMEOUT)
                     logger.debug("Hit - Received health packet")
                     await self.event_buffer.put("gun")
                     logger.debug("Added gun to action buffer")
                 except asyncio.TimeoutError:
+                    await self.event_buffer.put("miss")
                     logger.debug(f"Missed - No Health Packet Received")
             except Exception as e:
                 logger.error(f"Error in handle_gun: {e}")
@@ -145,22 +164,23 @@ class GameEngine:
     
     async def process(self) -> None:
         """
-        Sends gun or action to visualiser.
-        If gun, no need to await for FOV data. Else visualiser updates game engine that player was in view of action
+        Sends action (gun or AI) to visualiser, followed by the avalanche damage if any.
         Updates game state accordingly and puts into eval_client_send_buffer to queue sending to eval_server
         """
         while True:
             try:
                 action = await self.event_buffer.get()
                 logger.info(f"action: {action}")
-                hit = self.game_state.perform_action(action, 1, self.p1_visualiser_state)
-                mqtt_message = self.generate_mqtt_message(1, action, hit)
-                logger.info(f"Sending action to topic {ACTION_TOPIC} on visualiser: {mqtt_message}")
-                await self.visualiser_send_buffer.put((ACTION_TOPIC, mqtt_message))
-                for _ in range(self.p1_visualiser_state.get_snow_number()):
-                    mqtt_message = self.generate_mqtt_message(1, "avalanche", hit)
-                    logger.info(f"Sending action to topic {ACTION_TOPIC} on visualiser: {mqtt_message}")
-                    await self.visualiser_send_buffer.put((ACTION_TOPIC, mqtt_message))
+                fov, snow_number = self.p1_visualiser_state.get_fov(), self.p1_visualiser_state.get_snow_number()
+                # Handle avalanche (if any) - Order fixed by (thanks to) eval_server
+                if snow_number:
+                    avalanche_count = self.game_state.perform_avalanche(1, fov, snow_number)
+                    await self.send_visualiser_action(ACTION_TOPIC, 1, ACTION_AVALANCHE, None, None, avalanche_count)
+                # Handle action
+                hit, action_possible = self.game_state.perform_action(action, 1, fov)
+                action = "gun" if action == "miss" else action
+                await self.send_visualiser_action(ACTION_TOPIC, 1, action, hit, action_possible, None)
+                # Prepare for eval_server
                 eval_data = self.generate_game_state(action)
                 logger.info(f"Sending eval data to eval_client: {eval_data}")
                 await self.eval_client_send_buffer.put(eval_data)
@@ -168,25 +188,36 @@ class GameEngine:
             except Exception as e:
                 logger.error(f"Exception in process: {e}")
                 raise
-    # public class ActionPayload
-    #     {
-    #         public int player;
-    #         public string action;
-    #         public bool hit;
-    #         public GameState game_state;
-    #     }
-    def generate_mqtt_message(self, player: int, action: str, hit: bool) -> json:
+
+    async def send_visualiser_connection(self, topic: str, player: int, device: str) -> None:
+        message = self.generate_connection_mqtt_message(player, device)
+        logger.info(f"Sending connection to topic {topic} on visualiser: {message}")
+        await self.visualiser_send_buffer.put((topic, message))
+
+    async def send_visualiser_action(self, topic: str, player: int, action: str, hit: bool, action_possible: bool, avalanche_count: int) -> None:
+        message = self.generate_action_mqtt_message(player, action, hit, action_possible, avalanche_count)
+        logger.info(f"Sending action to topic {topic} on visualiser: {message}")
+        await self.visualiser_send_buffer.put((topic, message))
+
+    def generate_connection_mqtt_message(self, player: int, device: str) -> json:
+        connection_payload = {
+            'player': player,
+            'device': device,
+        }
+
+        return json.dumps(connection_payload)
+
+    def generate_action_mqtt_message(self, player: int, action: str, hit: bool, action_possible: bool, avalanche_count: int) -> json:
         action_payload = {
             'player': player,
             'action': action,
             'hit': hit,
+            'action_possible': action_possible,
+            'avalanche_count': avalanche_count,
             'game_state': self.game_state.to_dict()
         }
 
         return json.dumps(action_payload)
-
-    # def publish_to_visualiser(self, topic: str, message: str) -> None:
-
 
     def generate_game_state(self, predicted_action: str) -> json:
         logger.debug(f"Generating game state with action: {predicted_action}")
@@ -199,27 +230,21 @@ class GameEngine:
 
         return json.dumps(eval_data)
 
-   # {"p1": {"hp": 100, "bullets": 6, "bombs": 2, "shield_hp": 0, "deaths": 0, "shields": 3}, "p2": {"hp": 100, "bullets": 6, "bombs": 2, "shield_hp": 0, "deaths": 0, "shields": 3}}
-    async def send_packets_to_relay(self, game_state: dict) -> None:
-        game_state = json.dumps(game_state)
+    async def send_relay_node(self) -> None:
         p1_gun_packet = GunPacket()
-        p1_gun_packet.player = 1
-        p1_gun_packet.ammo = game_state['p1']['bullets']
+        p1_gun_packet.player, p1_gun_packet.ammo = 1, self.game_state['p1']['bullets']
         logger.info(f"Sending ammo packet to relay server: {p1_gun_packet}")
         p2_gun_packet = GunPacket()
-        p2_gun_packet.player = 4
-        p2_gun_packet.ammo = game_state['p2']['bullets']
+        p2_gun_packet.player, p2_gun_packet.ammo = 4, self.game_state['p2']['bullets']
         logger.info(f"Sending ammo packet to relay server: {p2_gun_packet}")
 
         p1_health_packet = HealthPacket()
         p1_health_packet.player = 3
-        p1_health_packet.p_health = game_state['p1']['hp']
-        p1_health_packet.s_health = game_state['p1']['shield_hp']
+        p1_health_packet.p_health, p1_health_packet.s_health = self.game_state['p1']['hp'], self.game_state['p1']['shield_hp']
         logger.info(f"Sending health packet to relay server: {p1_health_packet}")
         p2_health_packet = HealthPacket()
         p2_health_packet.player = 6
-        p2_health_packet.p_health = game_state['p2']['hp']
-        p2_health_packet.s_health = game_state['p2']['shield_hp']
+        p2_health_packet.p_health, p2_health_packet.s_health = self.game_state['p2']['hp'], self.game_state['p2']['shield_hp']
         logger.info(f"Sending health packet to relay server: {p2_health_packet}")
 
         await self.relay_server_send_buffer.put(p1_gun_packet.to_bytes())
@@ -233,33 +258,52 @@ class GameEngine:
         Puts updated game state into relay_server and visualiser send_buffers to update
         """ 
         while True:
-            game_state = await self.eval_client_read_buffer.get()
-            logger.info(f"Received game state data from eval_server = {game_state}")
-            await self.send_packets_to_relay(game_state)
-            logger.info(f"Sending game state to relay node")
-            # await self.relay_server_send_buffer.put(game_state)
-            null_action, null_hit = None, None
-            mqtt_message = self.generate_mqtt_message(1, null_action, null_hit)
+            eval_game_state = await self.eval_client_read_buffer.get()
+            logger.info(f"Received game state data from eval_server = {eval_game_state}")
+            self.update_game_state(eval_game_state)
+            # await self.send_relay_node(game_state)
+            # Propagate eval_server game state to visualiser with ignored action and hit
+            mqtt_message = self.generate_action_mqtt_message(1, None, None, None, None)
             logger.info("Sending game state to visualiser")
             await self.visualiser_send_buffer.put((ACTION_TOPIC, mqtt_message))
+
+    def update_game_state(self, eval_game_state: str) -> None:
+        eval_game_state = json.loads(eval_game_state)
+
+        for player_key, player_data in eval_game_state.items():
+            if player_key == "p1":
+                player = self.game_state.player_1
+            elif player_key == "p2":
+                player = self.game_state.player_2
+            else:
+                continue  # Skip invalid player keys
+
+            # Update the player's attributes
+            player.hp = player_data.get("hp", player.hp)
+            player.num_bullets = player_data.get("bullets", player.num_bullets)
+            player.num_bombs = player_data.get("bombs", player.num_bombs)
+            player.hp_shield = player_data.get("shield_hp", player.hp_shield)
+            player.num_deaths = player_data.get("deaths", player.num_deaths)
+            player.num_shield = player_data.get("shields", player.num_shield)
 
     async def visualiser_state_process(self) -> None:
         while True:
             try:
                 # Can consider 2 topics for p1, p2 to avoid congestion
-                # For now single topic string parse
                 sight_payload = await self.visualiser_read_buffer.get()
+                logger.warning(self.visualiser_read_buffer.qsize())
                 sight_payload = json.loads(sight_payload)
                 player, fov, snow_number = sight_payload['player'], sight_payload['in_sight'], sight_payload['avalanche']
                 if player == 1:
                     self.p1_visualiser_state.set_fov(fov)
                     self.p1_visualiser_state.set_snow_number(snow_number)
+                    logger.info(f"Updated p1 visualiser state: {self.p1_visualiser_state.get_fov()}, {self.p1_visualiser_state.get_snow_number()}")
                 elif player == 2:
                     self.p2_visualiser_state.set_fov(fov)
                     self.p2_visualiser_state.set_snow_number(snow_number)
-                logger.info(f"Updated p1 visualiser state: {self.p1_visualiser_state.get_fov()}, {self.p1_visualiser_state.get_snow_number()}")
+                    logger.info(f"Updated p2 visualiser state: {self.p2_visualiser_state.get_fov()}, {self.p2_visualiser_state.get_snow_number()}")
             except Exception as e:
-                logger.error(f"Error in update_fov: {e}")
+                logger.error(f"Error in visualiser_state_process: {e}")
 
     async def stop(self) -> None:
         logger.info("Cancelling tasks...")
@@ -278,7 +322,8 @@ class GameEngine:
             asyncio.create_task(self.prediction_process()),
             asyncio.create_task(self.eval_process()),
             asyncio.create_task(self.process()),
-            asyncio.create_task(self.visualiser_state_process())
+            asyncio.create_task(self.visualiser_state_process()),
+            asyncio.create_task(self.connection_process())
         ]
         try:
             await asyncio.gather(*self.tasks)
