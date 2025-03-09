@@ -175,7 +175,7 @@ class GameEngine:
                 # Handle avalanche (if any) - Order fixed by (thanks to) eval_server
                 if snow_number:
                     avalanche_count = self.game_state.perform_avalanche(1, fov, snow_number)
-                    await self.send_visualiser_action(ACTION_TOPIC, 1, ACTION_AVALANCHE, None, None, avalanche_count)
+                    await self.send_visualiser_action(ACTION_TOPIC, 1, ACTION_AVALANCHE, True, True, avalanche_count)
                 # Handle action
                 hit, action_possible = self.game_state.perform_action(action, 1, fov)
                 action = "gun" if action == "miss" else action
