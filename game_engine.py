@@ -6,7 +6,7 @@ from packet import GunPacket, HealthPacket, PacketFactory, IMU, HEALTH, GUN, CON
 from relay_server import RelayServer
 from ai_engine import AiEngine
 from game_state import GameState, VisualiserState
-from config import ACTION_AVALANCHE, CONNECTION_TOPIC, GUN_TIMEOUT, SECRET_KEY, HOST, MQTT_HOST, MQTT_PORT, SEND_TOPICS, READ_TOPICS, MQTT_BASE_RECONNECT_DELAY, MQTT_MAX_RECONNECT_DELAY, MQTT_MAX_RECONNECT_ATTEMPTS, RELAY_SERVER_PORT, ACTION_TOPIC
+from config import ACTION_AVALANCHE, CONNECTION_TOPIC, GUN_TIMEOUT, SECRET_KEY, HOST, MQTT_HOST, MQTT_PORT, SEND_TOPICS, READ_TOPICS, MQTT_BASE_RECONNECT_DELAY, MQTT_MAX_RECONNECT_DELAY, MQTT_MAX_RECONNECT_ATTEMPTS, RELAY_SERVER_PORT, ACTION_TOPIC, ALL_INTERFACE
 from logger import get_logger
 
 logger = get_logger(__name__)
@@ -70,7 +70,7 @@ class GameEngine:
     async def initiate_relay_server(self):
         relay_server = RelayServer(
             secret_key=SECRET_KEY,
-            host="",
+            host=ALL_INTERFACE,
             port=RELAY_SERVER_PORT,
             read_buffer=self.relay_server_read_buffer,
             send_buffer=self.relay_server_send_buffer
@@ -258,14 +258,17 @@ class GameEngine:
         Puts updated game state into relay_server and visualiser send_buffers to update
         """ 
         while True:
-            eval_game_state = await self.eval_client_read_buffer.get()
-            logger.info(f"Received game state data from eval_server = {eval_game_state}")
-            self.update_game_state(eval_game_state)
-            # await self.send_relay_node(game_state)
-            # Propagate eval_server game state to visualiser with ignored action and hit
-            mqtt_message = self.generate_action_mqtt_message(1, None, None, None, None)
-            logger.info("Sending game state to visualiser")
-            await self.visualiser_send_buffer.put((ACTION_TOPIC, mqtt_message))
+            try:
+                eval_game_state = await self.eval_client_read_buffer.get()
+                logger.info(f"Received game state data from eval_server = {eval_game_state}")
+                self.update_game_state(eval_game_state)
+                # await self.send_relay_node(game_state)
+                # Propagate eval_server game state to visualiser with ignored action and hit
+                mqtt_message = self.generate_action_mqtt_message(1, None, None, None, None)
+                logger.info("Sending game state to visualiser")
+                await self.visualiser_send_buffer.put((ACTION_TOPIC, mqtt_message))
+            except Exception as e:
+                logger.error(f"Error in eval_process: {e}")
 
     def update_game_state(self, eval_game_state: str) -> None:
         eval_game_state = json.loads(eval_game_state)
