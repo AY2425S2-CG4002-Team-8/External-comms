@@ -6,6 +6,7 @@ from logger import get_logger
 import pandas as pd
 import numpy as np
 import joblib
+from numpy import fft
 from sklearn.preprocessing import LabelEncoder
 
 
@@ -19,10 +20,11 @@ class AiEngine:
         self.PREDICTION_DATA_POINTS = 40 # Actual:30
         self.read_buffer = read_buffer
         self.write_buffer = write_buffer
-        self.bitstream_path = "/home/xilinx/capstone/FPGA-AI/mlp_inline_unroll_part_flow_pipe_merge.bit"
-        self.input_size = 192 # Actual:300
-        self.output_size = 6  # Actual:9
+        self.bitstream_path = "/home/xilinx/capstone/FPGA-AI/off_mlp.bit"
+        self.input_size = 228 # Actual:300
+        self.output_size = 9  # Actual:9
         self.window_size = 9  # Actual: 5
+        self.FFT_NUM = 5
         self.scaler_path = "/home/xilinx/capstone/FPGA-AI/robust_scaler.save"
         self.scaler = joblib.load(self.scaler_path)
         self.classes = '/home/xilinx/capstone/FPGA-AI/classes.npy'
@@ -89,75 +91,71 @@ class AiEngine:
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~AI Preprocessing~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#   
 
-    def trim(self, df):
-        if len(df) > self.PREDICTION_DATA_POINTS:
-            df = df.head(self.PREDICTION_DATA_POINTS)
-        return df
+    def get_fft(self, row):
+        row = row.values
+        fft_values = np.abs(fft.fft(row))
+        mag_cols = [f'mag_{i}' for i in range(self.FFT_NUM)] 
+        freq_cols = [f'freq_{i}' for i in range(self.FFT_NUM)] 
+        # Ignore DC Signal
+        fft_values[0] = 0
+        frequencies = fft.fftfreq(len(row))
+        # Get the top 5 fft_values
+        mag_values = sorted( [(x,i) for (i,x) in enumerate(fft_values)], reverse=True)
+        top_mag_fft = []
+        for x,i in mag_values:
+            if x not in top_mag_fft:
+                top_mag_fft.append( x[0] )
+                if len(top_mag_fft) == self.FFT_NUM:
+                        break
+        mag_df = pd.DataFrame([top_mag_fft], columns=mag_cols)
 
-    # Duplicate the values of df until the window size is met
-    def fill_window(self, df,window):
-        current_size = len(df)
-    
-        if current_size < window:
-            # Calculate how many times to repeat the DataFrame
-            repeat_times = (window // current_size) + 1  # We add 1 to make sure we have enough rows
-            # Repeat and slice the DataFrame
-            df = pd.concat([df] * repeat_times, ignore_index=True).head(window)
-                
+        freq_values = sorted( [(x,i) for (i,x) in enumerate(frequencies)], reverse=True)
+        top_freq_fft = []
+        for x,i in freq_values:
+            if x not in top_freq_fft:
+                top_freq_fft.append( x )
+                if len(top_freq_fft) == self.FFT_NUM:
+                        break
+        freq_df = pd.DataFrame([top_freq_fft], columns=freq_cols)
+        df = pd.concat((mag_df, freq_df), axis=1)
         return df
 
     def process_csv(self, df):
-        # Populate until window size is met
-        df = self.fill_window(df, self.PREDICTION_DATA_POINTS)
-        df = self.trim(df)
+        bufs = {}
+        for col in df.columns:
+            bufs[col] = []
+        for _, row in df.iterrows():
+            # Append readings
+            for col in df.columns:
+                bufs[col].append(row[col])
+        
+        df = pd.DataFrame([bufs])
         return df
     
     def feature_eng(self, df):
-        timestep_dataset = pd.DataFrame()
-
         cols = ['gun_ax', 'gun_ay', 'gun_az', 'gun_gx', 'gun_gy', 'gun_gz', 'glove_ax', 'glove_ay', 'glove_az', 'glove_gx', 'glove_gy', 'glove_gz']
-        # Break up each sensor feature into one feature per timestep
-        for feature in cols:
-            timestep_dataset[[f"{feature}_{i}" for i in range(self.PREDICTION_DATA_POINTS)]] = df[feature].to_list()
+        time_series_set = df.iloc[0,:]
+        row_df = pd.DataFrame()
+        for col in cols:
+            cell_cols = [f'{col}_mean', f'{col}_max', f'{col}_min', f'{col}_range', f'{col}_iqr', f'{col}_skew', f'{col}_kurt', f'{col}_std', f'{col}_median']
+            cell_df = pd.DataFrame(columns=cell_cols)
+            time_series = pd.DataFrame(time_series_set[col])
+            cell_df[f'{col}_mean'] = time_series.mean()
+            cell_df[f'{col}_max'] = time_series.max()
+            cell_df[f'{col}_min'] = time_series.min()
+            cell_df[f'{col}_range'] = cell_df[f'{col}_max'] - cell_df[f'{col}_min']
+            cell_df[f'{col}_std'] = time_series.std()
+            cell_df[f'{col}_skew'] = time_series.skew() 
+            cell_df[f'{col}_kurt'] = time_series.kurtosis()
+            cell_df[f'{col}_median'] = time_series.median()
+            cell_df[f'{col}_iqr'] = time_series.quantile(0.75) - time_series.quantile(0.25)
+        
+            row_df = pd.concat((row_df, cell_df), axis=1)
 
-        timestep_dataset = timestep_dataset.map(int)
-        timestep_dataset["action"] = df["action"]
-
-        # Rolling Window Stats
-        df_dict = {}
-        window_df = pd.DataFrame()
-
-        def get_window(df, window, cols):
-            rolled = df.rolling(window, min_periods=window, step=window)
-            roll_mean = rolled.mean()
-            roll_max = rolled.max()
-            roll_min = rolled.min()
-            roll_std = rolled.std()
-            new_row = []
-            for i in range(1,int(self.PREDICTION_DATA_POINTS/self.window_size)):
-                new_row = new_row + [roll_mean[i], roll_max[i], roll_min[i], roll_std[i], roll_skew[i]]
-            df = pd.DataFrame(new_row).transpose().reset_index().drop("index", axis=1)
-            df.columns = cols
-            return df
-
-        for index in range(0, 12):
-            window = timestep_dataset.iloc[:,index*self.PREDICTION_DATA_POINTS:(index*self.PREDICTION_DATA_POINTS)+self.PREDICTION_DATA_POINTS]
-            label = window.columns.values[0]
-            axis = label.split("_")[0] + label.split("_")[1]
-            new_cols = []
-            cols = [[f'{axis}_window_{i}_mean', f'{axis}_window_{i}_max', f'{axis}_window_{i}_min', f'{axis}_window_{i}_std', f'{axis}_window_{i}skew'] for i in range (int(self.PREDICTION_DATA_POINTS/self.window_size)-1)]
-            for list in cols:
-                new_cols = new_cols + list
-            df_dict[index] = pd.DataFrame(columns = new_cols)
-            for _, row in window.iterrows():
-                newdf = get_window(row, self.window_size, new_cols)
-                df_dict[index] = pd.concat((df_dict[index], newdf), axis=0, ignore_index=True)
-
-        for key in df_dict:
-            window_df = pd.concat((window_df, df_dict[key]), axis=1)
-
-        window_df["action"] = df["action"].reset_index().drop("index", axis=1)
-        return window_df
+            fft_df = self.get_fft(time_series)
+            row_df = pd.concat((row_df, fft_df), axis=1)
+        
+        return row_df
 
     def classify(self, data_dict) -> str:
         df = pd.DataFrame.from_dict(data_dict)
@@ -169,13 +167,13 @@ class AiEngine:
         # Feature engineering
         df = self.feature_eng(df)
         # Scaling
-        input_array = self.scaler.transform(df.drop("action", axis=1).to_numpy())
+        input = self.scaler.transform(df.to_numpy())
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~AI Inferencing~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#   
         input_buffer = allocate(shape=(self.input_size,), dtype=np.float32)
         output_buffer = allocate(shape=(self.output_size,), dtype=np.float32)
         for i in range(self.input_size):
-            self.input_buffer[i] = input_array[i]
+            input_buffer[i] = input[i]
         self.dma_send.transfer(self.input_buffer)
         self.dma_recv.transfer(self.output_buffer)
         
@@ -183,18 +181,14 @@ class AiEngine:
         self.dma_send.wait()
         self.dma_recv.wait()
         
-        if (self.dma_send.error):
+        if(self.dma_send.error):
             print("DMA_SEND ERR: " + self.dma_send.error)
-        if (self.dma_recv.error):
+        if(self.dma_recv.error):
             print("DMA_RECV ERR: " + self.dma_recv.error)
-
-        # Obtain model prediction
-        e_x = np.exp(self.output_buffer - np.max(self.output_buffer))
-        softmax = e_x / e_x.sum(axis=0)
 
         #TODO: Check softmax confidence level and classify low confidence as null
 
-        pred = np.argmax(softmax)
+        pred = np.argmax(output_buffer)
         pred_class = self.label_encoder.inverse_transform(pred)
         del input_buffer, output_buffer
         return pred_class
@@ -233,22 +227,4 @@ class AiEngine:
 
         except Exception as e:
             logger.error(f"Error occurred in the AI Engine: {e}")
-        # try:
-        #     while True:
-        #         data.clear()
-        #         while len(data) < self.PREDICTION_DATA_POINTS:
-        #             packet = await self.read_buffer.get()
-        #             data.append(packet)
-        #             logger.debug(f"IMU packet: {packet}. Received: {len(data)}/{self.PREDICTION_DATA_POINTS}")
-
-        #         if len(data) != self.PREDICTION_DATA_POINTS:
-        #             logger.debug(f"Packet size of {self.PREDICTION_DATA_POINTS} was not received")
-        #             continue
-                
-        #         data_dictionary = self.get_data(data)
-        #         predicted_data = self.classify(data_dictionary)
-        #         logger.debug(f"AI Engine Prediction: {predicted_data}")
-        #         await self.write_buffer.put(predicted_data)
-
-        # except Exception as e:
-        #     logger.error(f"Error occurred in the AI Engine: {e}")
+   
