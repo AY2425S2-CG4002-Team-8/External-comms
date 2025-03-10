@@ -7,7 +7,7 @@ logger = get_logger(__name__)
 IMU = 2
 GUN = 3
 HEALTH = 4
-CONNECTION = 5
+CONN = 5
 
 class PacketFactory:
     def create_packet(packet_byte_array: bytearray):
@@ -76,7 +76,6 @@ class ImuPacket:
 
     def __len__(self):
         return sys.getsizeof(self)
-        # return len(self.type) + len(self.seq) + len(self.gun_ax) + len(self.gun_ay) + len(self.gun_az) + len(self.gun_gx) + len(self.gun_gy) + len(self.gun_gz) + len(self.glove_ax) + len(self.glove_ay) + len(self.glove_az) + len(self.glove_gx) + len(self.glove_gy) + len(self.glove_gz)
 
 class GunPacket:
     def __init__(self, byteArray=None) -> None:
@@ -97,8 +96,6 @@ class GunPacket:
     
     def __len__(self):
         return sys.getsizeof(self)
-        # return len(self.type) + len(self.player) + len(self.ammo)
-
 
 class HealthPacket:
     def __init__(self, byteArray=None) -> None:
@@ -122,4 +119,23 @@ class HealthPacket:
     
     def __len__(self):
         return sys.getsizeof(self)
-        # return len(self.type) + len(self.player) + len(self.p_health) + len(self.s_health)
+
+class ConnPacket:
+    def __init__(self, byteArray=None) -> None:
+        self.type = CONN
+        if byteArray is None:
+            self.player = bytearray(1) 
+            self.connected = bytearray(1)
+        else:
+            self.player = byteArray[1]
+            self.connected = byteArray[2]
+
+    def to_bytes(self) -> bytearray:
+        byte_array = bytearray()
+        byte_array.append(self.type)
+        byte_array.append(self.player)
+        byte_array.append(self.connected)
+        return byte_array
+    
+    def __len__(self):
+        return sys.getsizeof(self)
