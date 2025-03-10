@@ -169,6 +169,7 @@ class AiEngine:
         df = self.feature_eng(df)
         # Scaling
         input = self.scaler.transform(df.to_numpy())
+        input = input.flatten().reshape(input.shape[1], 1)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~AI Inferencing~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#   
         input_buffer = allocate(shape=(self.input_size,), dtype=np.float32)
