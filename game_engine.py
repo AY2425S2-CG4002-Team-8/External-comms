@@ -2,7 +2,7 @@ import asyncio
 import json
 from mqtt.mqtt_client import MqttClient
 from eval_client import EvalClient
-from packet import CONNECTION, GunPacket, HealthPacket, PacketFactory, IMU, HEALTH, GUN
+from packet import GunPacket, HealthPacket, PacketFactory, IMU, HEALTH, GUN, CONN
 from relay_server import RelayServer
 from ai_engine import AiEngine
 from game_state import GameState, VisualiserState
@@ -98,7 +98,7 @@ class GameEngine:
         elif packet.type == IMU:
             logger.debug(f"IMU PACKET Received: Gun_ax {packet.gun_ax} Gun_ay {packet.gun_ay} Gun_az {packet.gun_az} Gun_gx {packet.gun_gx} Gun_gy {packet.gun_gy} Gun_gz {packet.gun_gz} Glove_ax {packet.glove_ax} Glove_ay {packet.glove_ay} Glove_az {packet.glove_az} Glove_gx {packet.glove_gx} Glove_gy {packet.glove_gy} Glove_gz {packet.glove_gz}")
             await self.ai_engine_read_buffer.put(packet)
-        elif packet.type == CONNECTION:
+        elif packet.type == CONN:
             logger.debug(f"CONNECTION PACKET Received: {packet}")
             await self.connection_buffer.put(packet)
         else:
