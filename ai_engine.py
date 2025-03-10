@@ -17,6 +17,7 @@ class AiEngine:
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Engine Init~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#   
 
     def __init__(self, read_buffer, write_buffer):
+        PL.reset()
         self.PREDICTION_DATA_POINTS = 40 # Actual:30
         self.read_buffer = read_buffer
         self.write_buffer = write_buffer
@@ -174,8 +175,8 @@ class AiEngine:
         output_buffer = allocate(shape=(self.output_size,), dtype=np.float32)
         for i in range(self.input_size):
             input_buffer[i] = input[i]
-        self.dma_send.transfer(self.input_buffer)
-        self.dma_recv.transfer(self.output_buffer)
+        self.dma_send.transfer(input_buffer)
+        self.dma_recv.transfer(output_buffer)
         
         # Wait for completion
         self.dma_send.wait()
