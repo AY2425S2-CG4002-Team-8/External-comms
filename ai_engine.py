@@ -211,15 +211,15 @@ class AiEngine:
         while not queue.empty():
             try:
                 queue.get_nowait()
-                logger.critical("Cleared queue")
+                logger.warning("Cleared queue")
                 queue.task_done()
             except asyncio.QueueEmpty:
-                logger.critical(f"Queue should be empty with len: {queue.qsize()}")
+                logger.warning(f"Queue should be empty with len: {queue.qsize()}")
                 break
 
     async def send_visualiser_cooldown(self, topic: str, player: int, ready: bool) -> None:
         message = self.generate_cooldown_mqtt_message(player, ready)
-        logger.info(f"Sending cooldown to topic {topic} on visualiser: {message}")
+        logger.debug(f"Sending cooldown to topic {topic} on visualiser: {message}")
         await self.visualiser_send_buffer.put((topic, message))
 
     def generate_cooldown_mqtt_message(self, player: int, ready: bool) -> json:
@@ -242,9 +242,7 @@ class AiEngine:
 
         # Convert dictionary to DataFrame and save
         df = pd.DataFrame.from_dict(data_dictionary)
-
         df.to_csv(filename, index=False)  # Save without row indices
-        logger.info(f"Data dictionary saved to {filename}")
 
     async def predict(self, player: int) -> None:
         """
@@ -257,23 +255,23 @@ class AiEngine:
                 await self.clear_queue(self.read_buffer)
                 await self.send_visualiser_cooldown(COOLDOWN_TOPIC, 1, True)
                 data.clear()
-                logger.debug("AI Engine: Starting to collect data for prediction")
+                logger.warning("AI Engine: Starting to collect data for prediction")
                 while True:
                     try:
-                        packet = await asyncio.wait_for(self.read_buffer.get(), timeout=0.5)
+                        packet = await asyncio.wait_for(self.read_buffer.get(), timeout=1)
                         data.append(packet)
-                        logger.debug(f"IMU packet: {packet}. Received on AI: {len(data)}")
+                        logger.warning(f"IMU packet Received on AI: {len(data)}")
                     except asyncio.TimeoutError:
                         break
                 # If data buffer is < threshold, we skip processing and continue to the next iteration
                 if len(data) < 10:
                     continue
                 
-                logger.info(f"Predicting with window size: {len(data)}")
+                logger.warning(f"Predicting with window size: {len(data)}")
                 data_dictionary = self.get_data(data)
                 self.save_data_to_csv(data_dictionary)
                 predicted_data = self.classify(data_dictionary)
-                logger.debug(f"AI Engine Prediction: {predicted_data}")
+                logger.warning(f"AI Engine Prediction: {predicted_data}")
                 await self.write_buffer.put(predicted_data)
                 await self.send_visualiser_cooldown(COOLDOWN_TOPIC, 1, False)
                 await asyncio.sleep(5)
