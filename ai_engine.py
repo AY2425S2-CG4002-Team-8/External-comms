@@ -200,7 +200,7 @@ class AiEngine:
             self.predict(1)
         )
 
-    async def clear_queue(queue: asyncio.Queue) -> None:
+    async def clear_queue(self, queue: asyncio.Queue) -> None:
         """Efficiently clears all items from an asyncio queue."""
         while not queue.empty():
             try:
