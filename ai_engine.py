@@ -1,5 +1,5 @@
 import asyncio
-import datetime
+from datetime import datetime
 import json
 from config import COOLDOWN_TOPIC
 from pynq import Overlay, allocate, PL, Clocks
@@ -271,6 +271,7 @@ class AiEngine:
                 data_dictionary = self.get_data(data)
                 self.save_data_to_csv(data_dictionary)
                 predicted_data = self.classify(data_dictionary)
+                predicted_data = "bomb" if predicted_data == "snowbomb" else predicted_data
                 logger.warning(f"AI Engine Prediction: {predicted_data}")
                 await self.write_buffer.put(predicted_data)
                 await self.send_visualiser_cooldown(COOLDOWN_TOPIC, 1, False)
