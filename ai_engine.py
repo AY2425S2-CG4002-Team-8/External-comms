@@ -1,5 +1,7 @@
 import asyncio
+import datetime
 import json
+from config import COOLDOWN_TOPIC
 from pynq import Overlay, allocate, PL, Clocks
 import pynq.ps
 from logger import get_logger
@@ -8,6 +10,7 @@ import numpy as np
 import joblib
 from numpy import fft
 from sklearn.preprocessing import LabelEncoder
+import os
 
 
 logger = get_logger(__name__)
@@ -16,11 +19,12 @@ class AiEngine:
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Engine Init~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#   
 
-    def __init__(self, read_buffer, write_buffer):
+    def __init__(self, read_buffer, write_buffer, visualiser_send_buffer):
         PL.reset()
         self.PREDICTION_DATA_POINTS = 80 # Actual:30
         self.read_buffer = read_buffer
         self.write_buffer = write_buffer
+        self.visualiser_send_buffer = visualiser_send_buffer
         self.bitstream_path = "/home/xilinx/capstone/FPGA-AI/off_model_10mar.bit" 
         self.input_size = 228 # Actual:300
         self.output_size = 9  # Actual:9
@@ -31,6 +35,8 @@ class AiEngine:
         self.classes = '/home/xilinx/capstone/FPGA-AI/classes.npy'
         self.label_encoder = LabelEncoder()
         self.label_encoder.classes_ = np.load(self.classes, allow_pickle=True)
+        self.dir = os.path.dirname(__file__)
+        self.csv_dir = os.path.join(self.dir, "./output")
 
         # Insert overlay and set up modules
         self.ol = Overlay(self.bitstream_path)
@@ -201,15 +207,44 @@ class AiEngine:
         )
 
     async def clear_queue(self, queue: asyncio.Queue) -> None:
-        """Efficiently clears all items from an asyncio queue."""
+        """Clears all items from an asyncio queue."""
         while not queue.empty():
             try:
                 queue.get_nowait()
                 logger.critical("Cleared queue")
                 queue.task_done()
             except asyncio.QueueEmpty:
-                logger.critical(f"Queue should be empty with len: {len(queue)}")
+                logger.critical(f"Queue should be empty with len: {queue.qsize()}")
                 break
+
+    async def send_visualiser_cooldown(self, topic: str, player: int, ready: bool) -> None:
+        message = self.generate_cooldown_mqtt_message(player, ready)
+        logger.info(f"Sending cooldown to topic {topic} on visualiser: {message}")
+        await self.visualiser_send_buffer.put((topic, message))
+
+    def generate_cooldown_mqtt_message(self, player: int, ready: bool) -> json:
+        cooldown_payload = {
+            'player': player,
+            'ready': ready,
+        }
+
+        return json.dumps(cooldown_payload)
+
+    def save_data_to_csv(self, data_dictionary):
+        """
+        Saves the data dictionary as a CSV file in the output directory.
+        """
+        if not os.path.exists(self.csv_dir):
+            os.makedirs(self.csv_dir)  # Ensure the directory exists
+
+        # Generate a timestamped filename
+        filename = f"{self.csv_dir}/prediction_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+
+        # Convert dictionary to DataFrame and save
+        df = pd.DataFrame.from_dict(data_dictionary)
+
+        df.to_csv(filename, index=False)  # Save without row indices
+        logger.info(f"Data dictionary saved to {filename}")
 
     async def predict(self, player: int) -> None:
         """
@@ -219,7 +254,10 @@ class AiEngine:
         data = []
         try:
             while True:
+                await self.clear_queue(self.read_buffer)
+                await self.send_visualiser_cooldown(COOLDOWN_TOPIC, 1, True)
                 data.clear()
+                logger.debug("AI Engine: Starting to collect data for prediction")
                 while True:
                     try:
                         packet = await asyncio.wait_for(self.read_buffer.get(), timeout=0.5)
@@ -233,10 +271,12 @@ class AiEngine:
                 
                 logger.info(f"Predicting with window size: {len(data)}")
                 data_dictionary = self.get_data(data)
+
                 predicted_data = self.classify(data_dictionary)
                 logger.debug(f"AI Engine Prediction: {predicted_data}")
                 await self.write_buffer.put(predicted_data)
-                await self.clear_queue(self.read_buffer)
+                await self.send_visualiser_cooldown(COOLDOWN_TOPIC, 1, False)
+                await asyncio.sleep(5)
 
         except Exception as e:
             logger.error(f"Error occurred in the AI Engine: {e}")

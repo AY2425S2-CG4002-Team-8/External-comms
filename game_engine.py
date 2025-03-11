@@ -24,7 +24,6 @@ class GameEngine:
         self.eval_client_read_buffer = asyncio.Queue()
         self.eval_client_send_buffer = asyncio.Queue()
         self.visualiser_read_buffer = asyncio.Queue()
-        self.visualiser_fov_read_buffer = asyncio.Queue()
         self.visualiser_send_buffer = asyncio.Queue()
         self.relay_server_read_buffer = asyncio.Queue()
         self.relay_server_send_buffer = asyncio.Queue()
@@ -79,7 +78,7 @@ class GameEngine:
         await relay_server.run()
 
     async def initiate_ai_engine(self):
-        ai_engine = AiEngine(read_buffer=self.ai_engine_read_buffer, write_buffer=self.ai_engine_write_buffer)
+        ai_engine = AiEngine(read_buffer=self.ai_engine_read_buffer, write_buffer=self.ai_engine_write_buffer, visualiser_send_buffer=self.visualiser_send_buffer)
         logger.debug("Starting AI Engine")
         await ai_engine.run()
 
