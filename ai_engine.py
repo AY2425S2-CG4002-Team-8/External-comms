@@ -191,9 +191,9 @@ class AiEngine:
         #TODO: Check softmax confidence level and classify low confidence as null
 
         pred = np.argmax(output_buffer)
-        pred_class = self.label_encoder.inverse_transform(pred)
+        pred_class = self.label_encoder.inverse_transform([pred])
         del input_buffer, output_buffer
-        return pred_class
+        return pred_class[0]
     
     async def run(self) -> None:
         await asyncio.gather(

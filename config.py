@@ -1,8 +1,15 @@
 # Socket Configuration
 SECRET_KEY="8888888888888888"
 HOST="127.0.0.1"
+ALL_INTERFACE=""
 RELAY_SERVER_HOST_NAME="makerslab-fpga-25.d2.comp.nus.edu.sg"
 RELAY_SERVER_PORT=8080
+
+#U96 Configuration
+U96_PORT=8888
+U96_HOST_NAME="makerslab-fpga-25.d2.comp.nus.edu.sg"
+U96_USER="xilinx"
+U96_PASSWORD="b08password"
 
 # MQTT Configuration
 MQTT_HOST="175.41.155.178"
@@ -18,6 +25,7 @@ MQTT_MAX_RECONNECT_ATTEMPTS=10
 
 # AI configuration
 AI_PACKET_TIMEOUT = 0.5
+AI_READ_BUFFER_MAX_SIZE = 80
 
 # Action Configuration
 ACTION_AVALANCHE = "avalanche"
