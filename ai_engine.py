@@ -21,7 +21,7 @@ class AiEngine:
         self.PREDICTION_DATA_POINTS = 80 # Actual:30
         self.read_buffer = read_buffer
         self.write_buffer = write_buffer
-        self.bitstream_path = "/home/xilinx/capstone/FPGA-AI/off_mlp.bit"
+        self.bitstream_path = "/home/xilinx/capstone/FPGA-AI/off_model_10mar.bit" 
         self.input_size = 228 # Actual:300
         self.output_size = 9  # Actual:9
         self.window_size = 9  # Actual: 5
