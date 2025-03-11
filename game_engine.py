@@ -6,7 +6,7 @@ from packet import GunPacket, HealthPacket, PacketFactory, IMU, HEALTH, GUN, CON
 from relay_server import RelayServer
 from ai_engine import AiEngine
 from game_state import GameState, VisualiserState
-from config import ACTION_AVALANCHE, CONNECTION_TOPIC, GUN_TIMEOUT, SECRET_KEY, HOST, MQTT_HOST, MQTT_PORT, SEND_TOPICS, READ_TOPICS, MQTT_BASE_RECONNECT_DELAY, MQTT_MAX_RECONNECT_DELAY, MQTT_MAX_RECONNECT_ATTEMPTS, RELAY_SERVER_PORT, ACTION_TOPIC, ALL_INTERFACE
+from config import ACTION_AVALANCHE, AI_READ_BUFFER_MAX_SIZE, CONNECTION_TOPIC, GUN_TIMEOUT, SECRET_KEY, HOST, MQTT_HOST, MQTT_PORT, SEND_TOPICS, READ_TOPICS, MQTT_BASE_RECONNECT_DELAY, MQTT_MAX_RECONNECT_DELAY, MQTT_MAX_RECONNECT_ATTEMPTS, RELAY_SERVER_PORT, ACTION_TOPIC, ALL_INTERFACE
 from logger import get_logger
 
 logger = get_logger(__name__)
@@ -28,7 +28,7 @@ class GameEngine:
         self.visualiser_send_buffer = asyncio.Queue()
         self.relay_server_read_buffer = asyncio.Queue()
         self.relay_server_send_buffer = asyncio.Queue()
-        self.ai_engine_read_buffer = asyncio.Queue()
+        self.ai_engine_read_buffer = asyncio.Queue(maxsize=AI_READ_BUFFER_MAX_SIZE)
         self.ai_engine_write_buffer = asyncio.Queue()
         self.connection_buffer = asyncio.Queue()
         self.health_buffer = asyncio.Queue()

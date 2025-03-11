@@ -18,7 +18,7 @@ class AiEngine:
 
     def __init__(self, read_buffer, write_buffer):
         PL.reset()
-        self.PREDICTION_DATA_POINTS = 40 # Actual:30
+        self.PREDICTION_DATA_POINTS = 80 # Actual:30
         self.read_buffer = read_buffer
         self.write_buffer = write_buffer
         self.bitstream_path = "/home/xilinx/capstone/FPGA-AI/off_mlp.bit"
@@ -200,6 +200,16 @@ class AiEngine:
             self.predict(1)
         )
 
+    async def clear_queue(queue: asyncio.Queue) -> None:
+        """Efficiently clears all items from an asyncio queue."""
+        while not queue.empty():
+            try:
+                queue.get_nowait()
+                queue.task_done()
+            except asyncio.QueueEmpty:
+                # Queue is empty
+                break
+
     async def predict(self, player: int) -> None:
         """
         Collects self.PREDICTION_DATA_POINTS packets to form a dictionary of arrays (current implementation) for AI inference
@@ -217,15 +227,16 @@ class AiEngine:
                     except asyncio.TimeoutError:
                         break
 
-                # If data buffer is empty, we skip processing and continue to the next iteration
+                # If data buffer is < threshold, we skip processing and continue to the next iteration
                 if len(data) < 10:
                     continue
-
+                
                 logger.info(f"Predicting with window size: {len(data)}")
                 data_dictionary = self.get_data(data)
                 predicted_data = self.classify(data_dictionary)
                 logger.debug(f"AI Engine Prediction: {predicted_data}")
                 await self.write_buffer.put(predicted_data)
+                await self.clear_queue(self.read_buffer)
 
         except Exception as e:
             logger.error(f"Error occurred in the AI Engine: {e}")
