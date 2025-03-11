@@ -126,6 +126,12 @@ class GameEngine:
             try:
                 connection_packet = await self.connection_buffer.get()
                 player, device = connection_packet.player, connection_packet.device
+                if device == 12:
+                    device = "gun"
+                elif device == 13:
+                    device = "glove"
+                elif device == 14:
+                    device = "vest"
                 logger.info(f"Sending connection to visualiser: {player}, {device}")
                 await self.send_visualiser_connection(CONNECTION_TOPIC, player, device)
             except Exception as e:
@@ -262,7 +268,7 @@ class GameEngine:
                 eval_game_state = await self.eval_client_read_buffer.get()
                 logger.info(f"Received game state data from eval_server = {eval_game_state}")
                 self.update_game_state(eval_game_state)
-                # await self.send_relay_node(game_state)
+                await self.send_relay_node()
                 # Propagate eval_server game state to visualiser with ignored action and hit
                 mqtt_message = self.generate_action_mqtt_message(1, None, None, None, None)
                 logger.info("Sending game state to visualiser")

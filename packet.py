@@ -13,6 +13,7 @@ class PacketFactory:
     def create_packet(packet_byte_array: bytearray):
         logger.debug(f"Packet = {packet_byte_array}")
         packet_type = packet_byte_array[0]
+        logger.critical(packet_type)
         logger.debug(f"Packet_type = {packet_type}")
         if packet_type == IMU:
             return ImuPacket(packet_byte_array)
@@ -20,6 +21,8 @@ class PacketFactory:
             return GunPacket(packet_byte_array)
         elif packet_type == HEALTH:
             return HealthPacket(packet_byte_array)
+        elif packet_type == CONN:
+            return ConnPacket(packet_byte_array)
         else:
             raise ValueError(f"Unknown packet type: {packet_type}")
 
