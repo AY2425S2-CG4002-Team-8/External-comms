@@ -205,9 +205,10 @@ class AiEngine:
         while not queue.empty():
             try:
                 queue.get_nowait()
+                logger.critical("Cleared queue")
                 queue.task_done()
             except asyncio.QueueEmpty:
-                # Queue is empty
+                logger.critical(f"Queue should be empty with len: {len(queue)}")
                 break
 
     async def predict(self, player: int) -> None:
@@ -219,14 +220,13 @@ class AiEngine:
         try:
             while True:
                 data.clear()
-                while len(data) < self.PREDICTION_DATA_POINTS:
+                while True:
                     try:
                         packet = await asyncio.wait_for(self.read_buffer.get(), timeout=0.5)
                         data.append(packet)
-                        logger.debug(f"IMU packet: {packet}. Received: {len(data)}/{self.PREDICTION_DATA_POINTS}")
+                        logger.debug(f"IMU packet: {packet}. Received on AI: {len(data)}")
                     except asyncio.TimeoutError:
                         break
-
                 # If data buffer is < threshold, we skip processing and continue to the next iteration
                 if len(data) < 10:
                     continue

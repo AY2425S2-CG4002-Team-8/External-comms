@@ -177,6 +177,8 @@ class GameEngine:
             try:
                 action = await self.event_buffer.get()
                 logger.info(f"action: {action}")
+                if action == "walking":
+                    continue
                 fov, snow_number = self.p1_visualiser_state.get_fov(), self.p1_visualiser_state.get_snow_number()
                 # Handle avalanche (if any) - Order fixed by (thanks to) eval_server
                 if snow_number:
