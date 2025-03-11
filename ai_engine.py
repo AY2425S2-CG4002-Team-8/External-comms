@@ -271,7 +271,7 @@ class AiEngine:
                 
                 logger.info(f"Predicting with window size: {len(data)}")
                 data_dictionary = self.get_data(data)
-
+                self.save_data_to_csv(data_dictionary)
                 predicted_data = self.classify(data_dictionary)
                 logger.debug(f"AI Engine Prediction: {predicted_data}")
                 await self.write_buffer.put(predicted_data)
