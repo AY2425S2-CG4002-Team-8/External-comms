@@ -19,7 +19,7 @@ class AiEngine:
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Engine Init~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#   
 
-    def __init__(self, read_buffer, write_buffer, visualiser_send_buffer, game_engine_event):
+    def __init__(self, read_buffer: asyncio.Queue, write_buffer:asyncio.Queue, visualiser_send_buffer: asyncio.Queue, game_engine_event: asyncio.Event):
         PL.reset()
         self.PREDICTION_DATA_POINTS = 80 # Actual:30
         self.read_buffer = read_buffer
@@ -274,7 +274,7 @@ class AiEngine:
                 if len(data) < 10:
                     continue
                 
-                await self.game_engine_event.clear()
+                self.game_engine_event.clear()
                 await self.send_visualiser_cooldown(COOLDOWN_TOPIC, 1, not_ready)
                 logger.warning(f"Predicting with window size: {len(data)}")
                 data_dictionary = self.get_data(data)
