@@ -19,7 +19,7 @@ def get_logger(name: str) -> logging.Logger:
                 'INFO': 'blue',
                 'WARNING': 'light_red',
                 'ERROR': 'red',
-                'CRITICAL': 'bold_red',
+                'CRITICAL': 'white',
             }
         )
         handler.setFormatter(formatter)

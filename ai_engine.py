@@ -19,11 +19,12 @@ class AiEngine:
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Engine Init~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#   
 
-    def __init__(self, read_buffer, write_buffer, visualiser_send_buffer):
+    def __init__(self, read_buffer, write_buffer, visualiser_send_buffer, game_engine_event):
         PL.reset()
         self.PREDICTION_DATA_POINTS = 80 # Actual:30
         self.read_buffer = read_buffer
         self.write_buffer = write_buffer
+        self.game_engine_event = game_engine_event
         self.visualiser_send_buffer = visualiser_send_buffer
         self.bitstream_path = "/home/xilinx/capstone/FPGA-AI/off_model_10mar.bit" 
         self.input_size = 228 # Actual:300
@@ -244,21 +245,27 @@ class AiEngine:
         df = pd.DataFrame.from_dict(data_dictionary)
         df.to_csv(filename, index=False)  # Save without row indices
 
+    #TODO: Remove testing parameters
     async def predict(self, player: int) -> None:
         """
         Collects self.PREDICTION_DATA_POINTS packets to form a dictionary of arrays (current implementation) for AI inference
         AI inference is against hardcoded dummy IMU data
         """
         data = []
+        # TESTING PARAMETERS -to use:
+        timeouts = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+        ready, not_ready = True, False
+
         try:
             while True:
+                await self.game_engine_event.wait()
+                await self.send_visualiser_cooldown(COOLDOWN_TOPIC, 1, ready)
                 await self.clear_queue(self.read_buffer)
-                await self.send_visualiser_cooldown(COOLDOWN_TOPIC, 1, True)
                 data.clear()
                 logger.warning("AI Engine: Starting to collect data for prediction")
                 while True:
                     try:
-                        packet = await asyncio.wait_for(self.read_buffer.get(), timeout=1)
+                        packet = await asyncio.wait_for(self.read_buffer.get(), timeout=0.8)
                         data.append(packet)
                         logger.warning(f"IMU packet Received on AI: {len(data)}")
                     except asyncio.TimeoutError:
@@ -267,15 +274,16 @@ class AiEngine:
                 if len(data) < 10:
                     continue
                 
+                await self.game_engine_event.clear()
+                await self.send_visualiser_cooldown(COOLDOWN_TOPIC, 1, not_ready)
                 logger.warning(f"Predicting with window size: {len(data)}")
                 data_dictionary = self.get_data(data)
+                # Save data to csv
                 self.save_data_to_csv(data_dictionary)
                 predicted_data = self.classify(data_dictionary)
                 predicted_data = "bomb" if predicted_data == "snowbomb" else predicted_data
                 logger.warning(f"AI Engine Prediction: {predicted_data}")
                 await self.write_buffer.put(predicted_data)
-                await self.send_visualiser_cooldown(COOLDOWN_TOPIC, 1, False)
-                await asyncio.sleep(5)
 
         except Exception as e:
             logger.error(f"Error occurred in the AI Engine: {e}")

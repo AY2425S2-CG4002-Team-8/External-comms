@@ -159,7 +159,6 @@ class Player:
             # if we die, we spawn immediately
             self.num_deaths += 1
             self.set_state(self.max_bullets, self.max_bombs, self.max_hp, self.num_deaths, self.max_shields, 0)
-        print("After damage: ", self.hp)
 
     def shield(self) -> bool:
         """Activate shield"""

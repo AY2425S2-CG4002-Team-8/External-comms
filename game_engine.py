@@ -21,6 +21,8 @@ class GameEngine:
         self.p1_visualiser_state = VisualiserState()
         self.p2_visualiser_state = VisualiserState()
 
+        self.game_engine_event = asyncio.Event()
+
         self.eval_client_read_buffer = asyncio.Queue()
         self.eval_client_send_buffer = asyncio.Queue()
         self.visualiser_read_buffer = asyncio.Queue()
@@ -78,7 +80,12 @@ class GameEngine:
         await relay_server.run()
 
     async def initiate_ai_engine(self):
-        ai_engine = AiEngine(read_buffer=self.ai_engine_read_buffer, write_buffer=self.ai_engine_write_buffer, visualiser_send_buffer=self.visualiser_send_buffer)
+        ai_engine = AiEngine(
+            read_buffer=self.ai_engine_read_buffer, 
+            write_buffer=self.ai_engine_write_buffer, 
+            visualiser_send_buffer=self.visualiser_send_buffer,
+            game_engine_event=self.game_engine_event
+            ),
         logger.critical("Starting AI Engine")
         await ai_engine.run()
 
@@ -172,6 +179,7 @@ class GameEngine:
         """
         while True:
             try:
+                await self.game_lock.acquire()
                 action = await self.event_buffer.get()
                 logger.critical(f"action: {action}")
                 if action == "walking":
@@ -180,7 +188,7 @@ class GameEngine:
                 # Handle avalanche (if any) - Order fixed by (thanks to) eval_server
                 if snow_number:
                     avalanche_count = self.game_state.perform_avalanche(1, fov, snow_number)
-                    await self.send_visualiser_action(ACTION_TOPIC, 1, ACTION_AVALANCHE, None, None, avalanche_count)
+                    await self.send_visualiser_action(ACTION_TOPIC, 1, ACTION_AVALANCHE, True, True, avalanche_count)
                 # Handle action
                 hit, action_possible = self.game_state.perform_action(action, 1, fov)
                 action = "gun" if action == "miss" else action
@@ -237,19 +245,19 @@ class GameEngine:
 
     async def send_relay_node(self) -> None:
         p1_gun_packet = GunPacket()
-        p1_gun_packet.player, p1_gun_packet.ammo = 1, self.game_state['p1']['bullets']
+        p1_gun_packet.player, p1_gun_packet.ammo = 1, self.game_state.player_1.bullets
         logger.info(f"Sending ammo packet to relay server p1")
         p2_gun_packet = GunPacket()
-        p2_gun_packet.player, p2_gun_packet.ammo = 4, self.game_state['p2']['bullets']
+        p2_gun_packet.player, p2_gun_packet.ammo = 4, self.game_state.player_2.bullets
         logger.info(f"Sending ammo packet to relay server p2")
 
         p1_health_packet = HealthPacket()
         p1_health_packet.player = 3
-        p1_health_packet.p_health, p1_health_packet.s_health = self.game_state['p1']['hp'], self.game_state['p1']['shield_hp']
+        p1_health_packet.p_health, p1_health_packet.s_health = self.game_state.player_1.hp, self.game_state.player_1.hp_shield
         logger.info(f"Sending health packet to relay server p1")
         p2_health_packet = HealthPacket()
         p2_health_packet.player = 6
-        p2_health_packet.p_health, p2_health_packet.s_health = self.game_state['p2']['hp'], self.game_state['p2']['shield_hp']
+        p2_health_packet.p_health, p2_health_packet.s_health = self.game_state.player_2.hp, self.game_state.player_2.hp_shield
         logger.info(f"Sending health packet to relay server: p2")
 
         await self.relay_server_send_buffer.put(p1_gun_packet.to_bytes())
@@ -267,11 +275,11 @@ class GameEngine:
                 eval_game_state = await self.eval_client_read_buffer.get()
                 logger.critical(f"Received game state data from eval_server = {eval_game_state}")
                 self.update_game_state(eval_game_state)
-                await self.send_relay_node()
                 # Propagate eval_server game state to visualiser with ignored action and hit
                 mqtt_message = self.generate_action_mqtt_message(1, None, None, None, None)
-                logger.critical("Sending game state to visualiser")
+                await self.send_relay_node()
                 await self.visualiser_send_buffer.put((ACTION_TOPIC, mqtt_message))
+                self.game_engine_event.set()
             except Exception as e:
                 logger.error(f"Error in eval_process: {e}")
 
