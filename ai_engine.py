@@ -21,7 +21,7 @@ class AiEngine:
 
     def __init__(self, read_buffer: asyncio.Queue, write_buffer:asyncio.Queue, visualiser_send_buffer: asyncio.Queue, game_engine_event: asyncio.Event):
         PL.reset()
-        self.PREDICTION_DATA_POINTS = 80 # Actual:30
+        self.MAX_PREDICTION_DATA_POINTS = 50 # Actual:30
         self.read_buffer = read_buffer
         self.write_buffer = write_buffer
         self.game_engine_event = game_engine_event
@@ -263,7 +263,7 @@ class AiEngine:
                 await self.clear_queue(self.read_buffer)
                 data.clear()
                 logger.warning("AI Engine: Starting to collect data for prediction")
-                while True:
+                while len(data) < self.MAX_PREDICTION_DATA_POINTS:
                     try:
                         packet = await asyncio.wait_for(self.read_buffer.get(), timeout=0.8)
                         data.append(packet)
