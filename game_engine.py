@@ -183,6 +183,7 @@ class GameEngine:
                 action = await self.event_buffer.get()
                 logger.critical(f"action: {action}")
                 if action == "walking":
+                    self.game_engine_event.set()
                     continue
                 fov, snow_number = self.p1_visualiser_state.get_fov(), self.p1_visualiser_state.get_snow_number()
                 # Handle avalanche (if any) - Order fixed by (thanks to) eval_server
@@ -245,10 +246,10 @@ class GameEngine:
 
     async def send_relay_node(self) -> None:
         p1_gun_packet = GunPacket()
-        p1_gun_packet.player, p1_gun_packet.ammo = 1, self.game_state.player_1.bullets
+        p1_gun_packet.player, p1_gun_packet.ammo = 1, self.game_state.player_1.num_bullets
         logger.info(f"Sending ammo packet to relay server p1")
         p2_gun_packet = GunPacket()
-        p2_gun_packet.player, p2_gun_packet.ammo = 4, self.game_state.player_2.bullets
+        p2_gun_packet.player, p2_gun_packet.ammo = 4, self.game_state.player_2.num_bullets
         logger.info(f"Sending ammo packet to relay server p2")
 
         p1_health_packet = HealthPacket()
