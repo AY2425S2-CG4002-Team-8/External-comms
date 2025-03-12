@@ -85,7 +85,7 @@ class GameEngine:
             write_buffer=self.ai_engine_write_buffer, 
             visualiser_send_buffer=self.visualiser_send_buffer,
             game_engine_event=self.game_engine_event
-            ),
+        )
         logger.critical("Starting AI Engine")
         await ai_engine.run()
 
@@ -179,7 +179,6 @@ class GameEngine:
         """
         while True:
             try:
-                await self.game_lock.acquire()
                 action = await self.event_buffer.get()
                 logger.critical(f"action: {action}")
                 if action == "walking":
