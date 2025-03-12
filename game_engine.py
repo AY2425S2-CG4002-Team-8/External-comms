@@ -22,6 +22,7 @@ class GameEngine:
         self.p2_visualiser_state = VisualiserState()
 
         self.game_engine_event = asyncio.Event()
+        self.game_engine_event.set()
 
         self.eval_client_read_buffer = asyncio.Queue()
         self.eval_client_send_buffer = asyncio.Queue()
