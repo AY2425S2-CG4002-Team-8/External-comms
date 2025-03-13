@@ -254,6 +254,7 @@ class AiEngine:
         data = []
         # TESTING PARAMETERS -to use:
         timeouts = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+        index = -1
         ready, not_ready = True, False
 
         try:
@@ -261,11 +262,14 @@ class AiEngine:
                 await self.game_engine_event.wait()
                 await self.send_visualiser_cooldown(COOLDOWN_TOPIC, 1, ready)
                 await self.clear_queue(self.read_buffer)
+                #TODO: CHECK BEST TIMEOUT
+                index = (index + 1 % len(timeouts))
+                logger.warning(f"Using timeout: f{timeouts[index]}")
                 data.clear()
                 logger.warning("AI Engine: Starting to collect data for prediction")
                 while len(data) < self.MAX_PREDICTION_DATA_POINTS:
                     try:
-                        packet = await asyncio.wait_for(self.read_buffer.get(), timeout=0.8)
+                        packet = await asyncio.wait_for(self.read_buffer.get(), timeout=timeouts[index])
                         data.append(packet)
                         logger.warning(f"IMU packet Received on AI: {len(data)}")
                     except asyncio.TimeoutError:
@@ -280,7 +284,8 @@ class AiEngine:
                 data_dictionary = self.get_data(data)
                 # Save data to csv
                 self.save_data_to_csv(data_dictionary)
-                predicted_data = self.classify(data_dictionary)
+                # Offload sychronous prediction into a separate thread
+                predicted_data = await asyncio.to_thread(self.classify, data_dictionary)
                 predicted_data = "bomb" if predicted_data == "snowbomb" else predicted_data
                 logger.warning(f"AI Engine Prediction: {predicted_data}")
                 await self.write_buffer.put(predicted_data)
