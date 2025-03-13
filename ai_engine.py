@@ -115,6 +115,9 @@ class AiEngine:
                 top_mag_fft.append( x[0] )
                 if len(top_mag_fft) == self.FFT_NUM:
                         break
+        if len(top_mag_fft) < self.FFT_NUM:
+            while len(top_mag_fft) < self.FFT_NUM:
+                top_mag_fft.append(0)
         mag_df = pd.DataFrame([top_mag_fft], columns=mag_cols)
 
         freq_values = sorted( [(x,i) for (i,x) in enumerate(frequencies)], reverse=True)
@@ -124,6 +127,9 @@ class AiEngine:
                 top_freq_fft.append( x )
                 if len(top_freq_fft) == self.FFT_NUM:
                         break
+        if len(top_freq_fft) < self.FFT_NUM:
+            while len(top_freq_fft) < self.FFT_NUM:
+                top_freq_fft.append(0)
         freq_df = pd.DataFrame([top_freq_fft], columns=freq_cols)
         df = pd.concat((mag_df, freq_df), axis=1)
         return df
@@ -269,7 +275,7 @@ class AiEngine:
                 logger.warning("AI Engine: Starting to collect data for prediction")
                 while len(data) < self.MAX_PREDICTION_DATA_POINTS:
                     try:
-                        packet = await asyncio.wait_for(self.read_buffer.get(), timeout=timeouts[index])
+                        packet = await asyncio.wait_for(self.read_buffer.get(), timeout=0.8)
                         data.append(packet)
                         logger.warning(f"IMU packet Received on AI: {len(data)}")
                     except asyncio.TimeoutError:
@@ -289,6 +295,7 @@ class AiEngine:
                 predicted_data = "bomb" if predicted_data == "snowbomb" else predicted_data
                 logger.warning(f"AI Engine Prediction: {predicted_data}")
                 await self.write_buffer.put(predicted_data)
+                await asyncio.sleep(3)
 
         except Exception as e:
             logger.error(f"Error occurred in the AI Engine: {e}")
