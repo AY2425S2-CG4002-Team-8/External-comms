@@ -181,6 +181,7 @@ class GameEngine:
         while True:
             try:
                 action = await self.event_buffer.get()
+                self.game_engine_event.clear()
                 logger.critical(f"action: {action}")
                 if action == "walking":
                     self.game_engine_event.set()

@@ -279,7 +279,6 @@ class AiEngine:
                 if len(data) < 10:
                     continue
                 
-                self.game_engine_event.clear()
                 await self.send_visualiser_cooldown(COOLDOWN_TOPIC, 1, not_ready)
                 logger.warning(f"Predicting with window size: {len(data)}")
                 data_dictionary = self.get_data(data)
@@ -290,7 +289,6 @@ class AiEngine:
                 predicted_data = "bomb" if predicted_data == "snowbomb" else predicted_data
                 logger.warning(f"AI Engine Prediction: {predicted_data}")
                 await self.write_buffer.put(predicted_data)
-                await asyncio.sleep(3)
 
         except Exception as e:
             logger.error(f"Error occurred in the AI Engine: {e}")
