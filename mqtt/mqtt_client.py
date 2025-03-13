@@ -68,8 +68,9 @@ class MqttClient:
     async def subscribe(self) -> None:
         """ Subscribe to all topics in self.read_topics - the topics this client needs to listen to """
         for topic in self.read_topics:
-            await self.client.subscribe(topic)
-            logger.debug(f"Successfully subscribed to topic {topic}")
+            qos = 2 if topic == "GE/Vis/actions" else 0  # Assign QoS 2 only to the specified topic
+            await self.client.subscribe(topic, qos=qos)
+            logger.debug(f"Successfully subscribed to topic {topic} with qos {qos}")
 
     async def listen(self) -> None:
         """ Listens to messages published by subscribed entities on client's cental message buffer and put into read_buffer """

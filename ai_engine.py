@@ -258,9 +258,6 @@ class AiEngine:
         AI inference is against hardcoded dummy IMU data
         """
         data = []
-        # TESTING PARAMETERS -to use:
-        timeouts = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
-        index = -1
         ready, not_ready = True, False
 
         try:
@@ -269,8 +266,6 @@ class AiEngine:
                 await self.send_visualiser_cooldown(COOLDOWN_TOPIC, 1, ready)
                 await self.clear_queue(self.read_buffer)
                 #TODO: CHECK BEST TIMEOUT
-                index = (index + 1 % len(timeouts))
-                logger.warning(f"Using timeout: f{timeouts[index]}")
                 data.clear()
                 logger.warning("AI Engine: Starting to collect data for prediction")
                 while len(data) < self.MAX_PREDICTION_DATA_POINTS:
