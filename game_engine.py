@@ -181,10 +181,9 @@ class GameEngine:
         while True:
             try:
                 action = await self.event_buffer.get()
-                self.game_engine_event.clear()
                 logger.critical(f"action: {action}")
-                if action == "walking":
-                    self.game_engine_event.set()
+                if action == "gun" or "walk":
+                    logger.critical(f"Dropping action: {action}")
                     continue
                 fov, snow_number = self.p1_visualiser_state.get_fov(), self.p1_visualiser_state.get_snow_number()
                 # Handle avalanche (if any) - Order fixed by (thanks to) eval_server
@@ -244,8 +243,8 @@ class GameEngine:
         logger.info(f"Generated eval data: {eval_data}")
 
         return json.dumps(eval_data)
-
-    async def send_relay_node(self) -> None:
+    
+    def generate_game_state_packet(self) -> tuple[GunPacket, GunPacket, HealthPacket, HealthPacket]:
         p1_gun_packet = GunPacket()
         p1_gun_packet.player, p1_gun_packet.ammo = 1, self.game_state.player_1.num_bullets
         logger.info(f"Sending ammo packet to relay server p1")
@@ -261,6 +260,11 @@ class GameEngine:
         p2_health_packet.player = 6
         p2_health_packet.p_health, p2_health_packet.s_health = self.game_state.player_2.hp, self.game_state.player_2.hp_shield
         logger.info(f"Sending health packet to relay server: p2")
+
+        return p1_gun_packet, p2_gun_packet, p1_health_packet, p2_health_packet
+    
+    async def send_relay_node(self) -> None:
+        p1_gun_packet, p2_gun_packet, p1_health_packet, p2_health_packet = self.generate_game_state_packet()
 
         await self.relay_server_send_buffer.put(p1_gun_packet.to_bytes())
         await self.relay_server_send_buffer.put(p2_gun_packet.to_bytes())
@@ -281,7 +285,6 @@ class GameEngine:
                 mqtt_message = self.generate_action_mqtt_message(1, None, None, None, None)
                 await self.send_relay_node()
                 await self.visualiser_send_buffer.put((ACTION_TOPIC, mqtt_message))
-                self.game_engine_event.set()
             except Exception as e:
                 logger.error(f"Error in eval_process: {e}")
 

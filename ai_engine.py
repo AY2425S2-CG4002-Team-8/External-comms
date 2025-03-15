@@ -21,19 +21,18 @@ class AiEngine:
 
     def __init__(self, read_buffer: asyncio.Queue, write_buffer:asyncio.Queue, visualiser_send_buffer: asyncio.Queue, game_engine_event: asyncio.Event):
         PL.reset()
-        self.MAX_PREDICTION_DATA_POINTS = 50 # Actual:30
+        self.MAX_PREDICTION_DATA_POINTS = 80 # Actual:30
         self.read_buffer = read_buffer
         self.write_buffer = write_buffer
         self.game_engine_event = game_engine_event
         self.visualiser_send_buffer = visualiser_send_buffer
-        self.bitstream_path = "/home/xilinx/capstone/FPGA-AI/off_model_10mar.bit" 
+        self.bitstream_path = "/home/xilinx/capstone/FPGA-AI/off_mlp_13mar.bit"
         self.input_size = 228 # Actual:300
-        self.output_size = 9  # Actual:9
-        self.window_size = 9  # Actual: 5
-        self.FFT_NUM = 5
-        self.scaler_path = "/home/xilinx/capstone/FPGA-AI/robust_scaler.save"
+        self.output_size = 8  # Actual:9
+        self.FFT_NUM = 2
+        self.scaler_path = "/home/xilinx/capstone/FPGA-AI/robust_scaler_aug.save"
         self.scaler = joblib.load(self.scaler_path)
-        self.classes = '/home/xilinx/capstone/FPGA-AI/classes.npy'
+        self.classes = '/home/xilinx/capstone/FPGA-AI/classes_aug.npy'
         self.label_encoder = LabelEncoder()
         self.label_encoder.classes_ = np.load(self.classes, allow_pickle=True)
         self.dir = os.path.dirname(__file__)
@@ -262,10 +261,8 @@ class AiEngine:
 
         try:
             while True:
-                await self.game_engine_event.wait()
                 await self.send_visualiser_cooldown(COOLDOWN_TOPIC, 1, ready)
                 await self.clear_queue(self.read_buffer)
-                #TODO: CHECK BEST TIMEOUT
                 data.clear()
                 logger.warning("AI Engine: Starting to collect data for prediction")
                 while len(data) < self.MAX_PREDICTION_DATA_POINTS:
@@ -278,7 +275,7 @@ class AiEngine:
                 # If data buffer is < threshold, we skip processing and continue to the next iteration
                 if len(data) < 10:
                     continue
-                
+                self.game_engine_event.clear()
                 await self.send_visualiser_cooldown(COOLDOWN_TOPIC, 1, not_ready)
                 logger.warning(f"Predicting with window size: {len(data)}")
                 data_dictionary = self.get_data(data)
@@ -289,6 +286,7 @@ class AiEngine:
                 predicted_data = "bomb" if predicted_data == "snowbomb" else predicted_data
                 logger.warning(f"AI Engine Prediction: {predicted_data}")
                 await self.write_buffer.put(predicted_data)
+                await asyncio.sleep(3)
 
         except Exception as e:
             logger.error(f"Error occurred in the AI Engine: {e}")

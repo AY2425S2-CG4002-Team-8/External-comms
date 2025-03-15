@@ -5,7 +5,7 @@ from logger import get_logger
 logger = get_logger(__name__)
 
 class MqttClient:
-    def __init__(self, host: str, port: int, read_buffer, send_buffer, send_topics: list, read_topics: list, base_reconnect_delay, max_reconnect_delay, max_reconnect_attempts):
+    def __init__(self, host: str, port: int, read_buffer, send_buffer, send_topics: list[tuple[str, int]], read_topics: list[tuple[str, int]], base_reconnect_delay, max_reconnect_delay, max_reconnect_attempts):
         self.host = host
         self.port = port
         self.read_buffer = read_buffer
@@ -59,16 +59,15 @@ class MqttClient:
     async def broadcast(self, message) -> None:
         """ Publishes message to all topics that it should be published to """
         if self.client and self.isConnected:
-            for topic in self.send_topics:
-                await self.client.publish(topic, message)
+            for topic, qos in self.send_topics:
+                await self.client.publish(topic, message, qos=qos)
                 logger.debug(f"Published message '{message}' to topic '{topic}'")
         else:
             logger.warning("Not connected to MQTT broker to publish")
     
     async def subscribe(self) -> None:
         """ Subscribe to all topics in self.read_topics - the topics this client needs to listen to """
-        for topic in self.read_topics:
-            qos = 2 if topic == "GE/Vis/actions" else 0  # Assign QoS 2 only to the specified topic
+        for topic, qos in self.read_topics:
             await self.client.subscribe(topic, qos=qos)
             logger.debug(f"Successfully subscribed to topic {topic} with qos {qos}")
 
