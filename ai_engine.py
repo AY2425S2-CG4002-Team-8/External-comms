@@ -21,7 +21,7 @@ class AiEngine:
 
     def __init__(self, read_buffer: asyncio.Queue, write_buffer:asyncio.Queue, visualiser_send_buffer: asyncio.Queue, game_engine_event: asyncio.Event):
         PL.reset()
-        self.MAX_PREDICTION_DATA_POINTS = 50 # Actual:30
+        self.MAX_PREDICTION_DATA_POINTS = 30 # Actual:30
         self.FFT_NUM = 2
         self.FEATURE_SIZE = 12
         self.PACKET_TIMEOUT = 0.2
@@ -30,10 +30,10 @@ class AiEngine:
         self.game_engine_event = game_engine_event
         self.visualiser_send_buffer = visualiser_send_buffer
         self.COLUMNS = ['gun_ax', 'gun_ay', 'gun_az', 'gun_gx', 'gun_gy', 'gun_gz', 'glove_ax', 'glove_ay', 'glove_az', 'glove_gx', 'glove_gy', 'glove_gz']
-        self.bitstream_path = "/home/xilinx/capstone/FPGA-AI/off_mlp_comb_nofreq.bit"
+        self.bitstream_path = "/home/xilinx/capstone/FPGA-AI/off_mlp_comb_nofreq_trim30.bit"
         self.input_size = 108 # Actual:300
         self.output_size = 10  # Actual:9
-        self.scaler_path = "/home/xilinx/capstone/FPGA-AI/robust_scaler_aug_nofreq.save"
+        self.scaler_path = "/home/xilinx/capstone/FPGA-AI/robust_scaler_aug_nofreq_trim30.save"
         self.scaler = joblib.load(self.scaler_path)
         self.classes = '/home/xilinx/capstone/FPGA-AI/classes_comb.npy'
         self.label_encoder = LabelEncoder()
