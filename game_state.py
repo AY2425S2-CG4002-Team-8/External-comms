@@ -23,17 +23,6 @@ class GameState:
         player.set_state(bullets_remaining, bombs_remaining, hp, num_deaths,
                          num_unused_shield, shield_health)
         
-    def perform_avalanche(self, player_id, fov, snow_number) -> None:
-        if player_id == 1:
-            attacker = self.player_1
-            opponent = self.player_2
-        else:
-            attacker = self.player_2
-            opponent = self.player_1
-        attacker.rain_damage(opponent, fov, snow_number)
-
-        return snow_number
-
     def perform_action(self, action, player_id, fov, snow_number, visualiser_state) -> bool:
         """use the user sent action to alter the game state"""
 
@@ -46,21 +35,19 @@ class GameState:
         # TODO: Use actual fov and snow number.
         fov, snow_number = visualiser_state.get_fov(), visualiser_state.get_snow_number()
         attacker.rain_damage(opponent, fov, snow_number)
-
         action_possible = True
 
-        if action == "miss":
-            fov = False
-
         # perform the actual action
-        if action == "gun" or action == "miss":
+        if action == "miss":
+            return False, action_possible
+        elif action == "gun" or action == "miss":
             action_possible = attacker.shoot(opponent, fov)
         elif action == "shield":
             action_possible = attacker.shield()
         elif action == "reload":
             action_possible = attacker.reload()
         elif action == "bomb":
-            action_possible = attacker.bomb(opponent, fov)
+            action_possible = attacker.bomb(opponent, fov, snow_number)
         elif action in {"badminton", "golf", "fencing", "boxing"}:
             # all these have the same behaviour
             attacker.harm_AI(opponent, fov)
@@ -174,7 +161,7 @@ class Player:
         return True
 
     #TODO: Implement bomb, add the start to a rain/snow in the quadrant of the opponent
-    def bomb(self, opponent, fov: bool, visualiser_state) -> bool:
+    def bomb(self, opponent, fov: bool, visualiser_state, snow_number: int) -> bool:
         """Throw a bomb at opponent"""
         if self.num_bombs <= 0:
             return False
@@ -182,7 +169,7 @@ class Player:
         if fov:
             opponent.damage(self.hp_bomb)
             # TODO: Use actual fov and snow number
-            visualiser_state.set_snow_number(visualiser_state.get_snow_number() + 1)
+            visualiser_state.set_snow_number(snow_number + 1)
 
         return True
 

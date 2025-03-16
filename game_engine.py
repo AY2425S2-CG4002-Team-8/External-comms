@@ -306,23 +306,23 @@ class GameEngine:
             player.num_deaths = player_data.get("deaths", player.num_deaths)
             player.num_shield = player_data.get("shields", player.num_shield)
 
-    async def visualiser_state_process(self) -> None:
-        while True:
-            try:
-                # Can consider 2 topics for p1, p2 to avoid congestion
-                sight_payload = await self.visualiser_read_buffer.get()
-                sight_payload = json.loads(sight_payload)
-                player, fov, snow_number = sight_payload['player'], sight_payload['in_sight'], sight_payload['avalanche']
-                if player == 1:
-                    self.p1_visualiser_state.set_fov(fov)
-                    self.p1_visualiser_state.set_snow_number(snow_number)
-                    logger.debug(f"Updated p1 visualiser state: {self.p1_visualiser_state.get_fov()}, {self.p1_visualiser_state.get_snow_number()}")
-                elif player == 2:
-                    self.p2_visualiser_state.set_fov(fov)
-                    self.p2_visualiser_state.set_snow_number(snow_number)
-                    logger.debug(f"Updated p2 visualiser state: {self.p2_visualiser_state.get_fov()}, {self.p2_visualiser_state.get_snow_number()}")
-            except Exception as e:
-                logger.error(f"Error in visualiser_state_process: {e}")
+    # async def visualiser_state_process(self) -> None:
+    #     while True:
+    #         try:
+    #             # Can consider 2 topics for p1, p2 to avoid congestion
+    #             sight_payload = await self.visualiser_read_buffer.get()
+    #             sight_payload = json.loads(sight_payload)
+    #             player, fov, snow_number = sight_payload['player'], sight_payload['in_sight'], sight_payload['avalanche']
+    #             if player == 1:
+    #                 self.p1_visualiser_state.set_fov(fov)
+    #                 self.p1_visualiser_state.set_snow_number(snow_number)
+    #                 logger.debug(f"Updated p1 visualiser state: {self.p1_visualiser_state.get_fov()}, {self.p1_visualiser_state.get_snow_number()}")
+    #             elif player == 2:
+    #                 self.p2_visualiser_state.set_fov(fov)
+    #                 self.p2_visualiser_state.set_snow_number(snow_number)
+    #                 logger.debug(f"Updated p2 visualiser state: {self.p2_visualiser_state.get_fov()}, {self.p2_visualiser_state.get_snow_number()}")
+    #         except Exception as e:
+    #             logger.error(f"Error in visualiser_state_process: {e}")
 
     async def stop(self) -> None:
         logger.critical("Cancelling tasks...")
