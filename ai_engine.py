@@ -30,8 +30,8 @@ class AiEngine:
         self.visualiser_send_buffer = visualiser_send_buffer
         self.COLUMNS = ['gun_ax', 'gun_ay', 'gun_az', 'gun_gx', 'gun_gy', 'gun_gz', 'glove_ax', 'glove_ay', 'glove_az', 'glove_gx', 'glove_gy', 'glove_gz']
         self.bitstream_path = "/home/xilinx/capstone/FPGA-AI/off_mlp_comb_nofreq.bit"
-        self.input_size = 228 # Actual:300
-        self.output_size = 8  # Actual:9
+        self.input_size = 108 # Actual:300
+        self.output_size = 10  # Actual:9
         self.scaler_path = "/home/xilinx/capstone/FPGA-AI/robust_scaler_aug_nofreq.save"
         self.scaler = joblib.load(self.scaler_path)
         self.classes = '/home/xilinx/capstone/FPGA-AI/classes_comb.npy'
