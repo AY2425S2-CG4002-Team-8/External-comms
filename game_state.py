@@ -34,7 +34,7 @@ class GameState:
 
         return snow_number
 
-    def perform_action(self, action, player_id, fov) -> bool:
+    def perform_action(self, action, player_id, fov, snow_number) -> bool:
         """use the user sent action to alter the game state"""
 
         if player_id == 1:
@@ -44,14 +44,16 @@ class GameState:
             attacker = self.player_2
             opponent = self.player_1
 
+        attacker.rain_damage(opponent, fov, snow_number)
+
         action_possible = True
 
         if action == "miss":
-            return False, action_possible
+            fov = False
 
         # perform the actual action
-        if action == "gun":
-            action_possible = attacker.shoot(opponent)
+        if action == "gun" or "miss":
+            action_possible = attacker.shoot(opponent, fov)
         elif action == "shield":
             action_possible = attacker.shield()
         elif action == "reload":
@@ -137,11 +139,12 @@ class Player:
         self.num_deaths     = num_deaths
 
     #TODO: Attain ammo data from the gun packet + health from health packet
-    def shoot(self, opponent) -> bool:
+    def shoot(self, opponent, fov) -> bool:
         if self.num_bullets <= 0:
             return False
         self.num_bullets -= 1
-        opponent.damage(self.hp_bullet)
+        if fov:
+            opponent.damage(self.hp_bullet)
 
         return True
 

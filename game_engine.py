@@ -131,7 +131,9 @@ class GameEngine:
         while True:
             try:
                 connection_packet = await self.connection_buffer.get()
-                player, device = connection_packet.player, connection_packet.device
+                player, device, first_conn = connection_packet.player, connection_packet.device, connection_packet.first_conn
+                if first_conn:
+                    self.send_relay_node()
                 if device == 12:
                     device = "gun"
                 elif device == 13:
@@ -182,16 +184,11 @@ class GameEngine:
             try:
                 action = await self.event_buffer.get()
                 logger.critical(f"action: {action}")
-                if action == "gun" or "walk":
+                if action == "shoot" or "walk":
                     logger.critical(f"Dropping action: {action}")
                     continue
                 fov, snow_number = self.p1_visualiser_state.get_fov(), self.p1_visualiser_state.get_snow_number()
-                # Handle avalanche (if any) - Order fixed by (thanks to) eval_server
-                if snow_number:
-                    avalanche_count = self.game_state.perform_avalanche(1, fov, snow_number)
-                    await self.send_visualiser_action(ACTION_TOPIC, 1, ACTION_AVALANCHE, True, True, avalanche_count)
-                # Handle action
-                hit, action_possible = self.game_state.perform_action(action, 1, fov)
+                hit, action_possible = self.game_state.perform_action(action, 1, fov, snow_number)
                 action = "gun" if action == "miss" else action
                 await self.send_visualiser_action(ACTION_TOPIC, 1, action, hit, action_possible, None)
                 # Prepare for eval_server

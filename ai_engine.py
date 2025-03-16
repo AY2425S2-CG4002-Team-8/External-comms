@@ -21,7 +21,9 @@ class AiEngine:
 
     def __init__(self, read_buffer: asyncio.Queue, write_buffer:asyncio.Queue, visualiser_send_buffer: asyncio.Queue, game_engine_event: asyncio.Event):
         PL.reset()
-        self.MAX_PREDICTION_DATA_POINTS = 80 # Actual:30
+        self.MAX_PREDICTION_DATA_POINTS = 50 # Actual:30
+        self.FFT_NUM = 2
+        self.FEATURE_SIZE = 12
         self.read_buffer = read_buffer
         self.write_buffer = write_buffer
         self.game_engine_event = game_engine_event
@@ -29,7 +31,6 @@ class AiEngine:
         self.bitstream_path = "/home/xilinx/capstone/FPGA-AI/off_mlp_13mar.bit"
         self.input_size = 228 # Actual:300
         self.output_size = 8  # Actual:9
-        self.FFT_NUM = 2
         self.scaler_path = "/home/xilinx/capstone/FPGA-AI/robust_scaler_aug.save"
         self.scaler = joblib.load(self.scaler_path)
         self.classes = '/home/xilinx/capstone/FPGA-AI/classes_aug.npy'
@@ -165,18 +166,21 @@ class AiEngine:
         
             row_df = pd.concat((row_df, cell_df), axis=1)
 
-            fft_df = self.get_fft(time_series)
-            row_df = pd.concat((row_df, fft_df), axis=1)
+           # fft_df = self.get_fft(time_series)
+            #row_df = pd.concat((row_df, fft_df), axis=1)
         
         return row_df
 
-    def classify(self, data_dict) -> str:
-        df = pd.DataFrame.from_dict(data_dict)
-
+    def classify(self, data: np.ndarray) -> str:
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~AI Preprocessing~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#   
-        
-        df = self.process_csv(df)
-        df.reset_index(drop=True, inplace=True)
+        df = pd.DataFrame(
+            data,
+            columns=[
+            'gun_ax', 'gun_ay', 'gun_az', 'gun_gx', 'gun_gy', 'gun_gz', 
+            'glove_ax', 'glove_ay', 'glove_az', 'glove_gx', 'glove_gy', 'glove_gz'
+        ])
+        # df = self.process_csv(df)
+        # df.reset_index(drop=True, inplace=True)
         # Feature engineering
         df = self.feature_eng(df)
         # Scaling
@@ -220,7 +224,7 @@ class AiEngine:
                 logger.warning("Cleared queue")
                 queue.task_done()
             except asyncio.QueueEmpty:
-                logger.warning(f"Queue should be empty with len: {queue.qsize()}")
+                logger.warning(f"Queue is empty with len: {queue.qsize()}")
                 break
 
     async def send_visualiser_cooldown(self, topic: str, player: int, ready: bool) -> None:
@@ -256,37 +260,47 @@ class AiEngine:
         Collects self.PREDICTION_DATA_POINTS packets to form a dictionary of arrays (current implementation) for AI inference
         AI inference is against hardcoded dummy IMU data
         """
-        data = []
-        ready, not_ready = True, False
 
         try:
             while True:
-                await self.send_visualiser_cooldown(COOLDOWN_TOPIC, 1, ready)
                 await self.clear_queue(self.read_buffer)
-                data.clear()
+                data = np.zeros((12, self.MAX_PREDICTION_DATA_POINTS), dtype=np.float32)
                 logger.warning("AI Engine: Starting to collect data for prediction")
-                while len(data) < self.MAX_PREDICTION_DATA_POINTS:
+                for i in range(self.MAX_PREDICTION_DATA_POINTS):
                     try:
                         packet = await asyncio.wait_for(self.read_buffer.get(), timeout=0.8)
-                        data.append(packet)
-                        logger.warning(f"IMU packet Received on AI: {len(data)}")
+                        data[0, i] = packet.gun_ax
+                        data[1, i] = packet.gun_ay
+                        data[2, i] = packet.gun_az
+                        data[3, i] = packet.gun_gx
+                        data[4, i] = packet.gun_gy
+                        data[5, i] = packet.gun_gz
+                        data[6, i] = packet.glove_ax
+                        data[7, i] = packet.glove_ay
+                        data[8, i] = packet.glove_az
+                        data[9, i] = packet.glove_gx
+                        data[10, i] = packet.glove_gy
+                        data[11, i] = packet.glove_gz
+
+                        logger.warning(f"IMU packet Received on AI: {i+1}")
+
                     except asyncio.TimeoutError:
                         break
+
                 # If data buffer is < threshold, we skip processing and continue to the next iteration
-                if len(data) < 10:
+                if data.shape[1] < 10:
+                    logger.warning(f"{data.shape[1]} packets received. Skipping prediction")
                     continue
-                self.game_engine_event.clear()
-                await self.send_visualiser_cooldown(COOLDOWN_TOPIC, 1, not_ready)
-                logger.warning(f"Predicting with window size: {len(data)}")
-                data_dictionary = self.get_data(data)
-                # Save data to csv
-                self.save_data_to_csv(data_dictionary)
-                # Offload sychronous prediction into a separate thread
-                predicted_data = await asyncio.to_thread(self.classify, data_dictionary)
+
+                await self.send_visualiser_cooldown(COOLDOWN_TOPIC, 1, False)
+                # Perform inference in a separate thread
+                predicted_data = await asyncio.to_thread(self.classify, data)
                 predicted_data = "bomb" if predicted_data == "snowbomb" else predicted_data
                 logger.warning(f"AI Engine Prediction: {predicted_data}")
+
                 await self.write_buffer.put(predicted_data)
                 await asyncio.sleep(3)
+                await self.send_visualiser_cooldown(COOLDOWN_TOPIC, 1, True)
 
         except Exception as e:
             logger.error(f"Error occurred in the AI Engine: {e}")

@@ -126,15 +126,19 @@ class ConnPacket:
         if byteArray is None:
             self.player = bytearray(1) 
             self.device = bytearray(1)
+            self.first_conn = bytearray(1)
+
         else:
             self.player = byteArray[1]
             self.device = byteArray[2]
+            self.first_conn = byteArray[3]
 
     def to_bytes(self) -> bytearray:
         byte_array = bytearray()
         byte_array.append(self.type)
         byte_array.append(self.player)
         byte_array.append(self.device)
+        byte_array.append(self.first_conn)
         return byte_array
     
     def __len__(self):
