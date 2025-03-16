@@ -38,9 +38,9 @@ class GameState:
         action_possible = True
 
         # perform the actual action
-        if action == "miss":
-            return False, action_possible
-        elif action == "gun" or action == "miss":
+        # if action == "miss":
+        #     return False, action_possible
+        if action == "gun" or action == "miss":
             action_possible = attacker.shoot(opponent, fov)
         elif action == "shield":
             action_possible = attacker.shield()
