@@ -24,6 +24,7 @@ class AiEngine:
         self.MAX_PREDICTION_DATA_POINTS = 50 # Actual:30
         self.FFT_NUM = 2
         self.FEATURE_SIZE = 12
+        self.PACKET_TIMEOUT = 0.2
         self.read_buffer = read_buffer
         self.write_buffer = write_buffer
         self.game_engine_event = game_engine_event
@@ -57,95 +58,7 @@ class AiEngine:
         # Activate neural network IP module
         self.mlp.write(0x0, 0x81) # 0 (AP_START) to “1” and bit 7 (AUTO_RESTART) to “1”
 
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Data Link with GE~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#   
-
-    def get_data(self, data) -> dict[str, list[int]]: 
-        """
-        Converts a list of PacketImu objects into a combined input list for the AI.
-        """
-        gun_ax_array, gun_ay_array, gun_az_array = [], [], []
-        gun_gx_array, gun_gy_array, gun_gz_array = [], [], []
-        glove_ax_array, glove_ay_array, glove_az_array = [], [], []
-        glove_gx_array, glove_gy_array, glove_gz_array = [], [], []
-
-        for packet in data:
-            # Gets integer from bytes. Little endian as defined by relay node and signed since values can be -ve
-            gun_ax_array.append(packet.gun_ax)
-            gun_ay_array.append(packet.gun_ay)
-            gun_az_array.append(packet.gun_az)
-            gun_gx_array.append(packet.gun_gx)
-            gun_gy_array.append(packet.gun_gy)
-            gun_gz_array.append(packet.gun_gz)
-            glove_ax_array.append(packet.glove_ax)
-            glove_ay_array.append(packet.glove_ay)
-            glove_az_array.append(packet.glove_az)
-            glove_gx_array.append(packet.glove_gx)
-            glove_gy_array.append(packet.glove_gy)
-            glove_gz_array.append(packet.glove_gz)
-
-        return {
-            'gun_ax': gun_ax_array,
-            'gun_ay': gun_ay_array,
-            'gun_az': gun_az_array,
-            'gun_gx': gun_gx_array,
-            'gun_gy': gun_gy_array,
-            'gun_gz': gun_gz_array,
-            'glove_ax': glove_ax_array,
-            'glove_ay': glove_ay_array,
-            'glove_az': glove_az_array,
-            'glove_gx': glove_gx_array,
-            'glove_gy': glove_gy_array,
-            'glove_gz': glove_gz_array
-        }
-
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~AI Preprocessing~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#   
-
-    def get_fft(self, row):
-        row = row.values
-        fft_values = np.abs(fft.fft(row))
-        mag_cols = [f'mag_{i}' for i in range(self.FFT_NUM)] 
-        freq_cols = [f'freq_{i}' for i in range(self.FFT_NUM)] 
-        # Ignore DC Signal
-        fft_values[0] = 0
-        frequencies = fft.fftfreq(len(row))
-        # Get the top 5 fft_values
-        mag_values = sorted( [(x,i) for (i,x) in enumerate(fft_values)], reverse=True)
-        top_mag_fft = []
-        for x,i in mag_values:
-            if x not in top_mag_fft:
-                top_mag_fft.append( x[0] )
-                if len(top_mag_fft) == self.FFT_NUM:
-                        break
-        if len(top_mag_fft) < self.FFT_NUM:
-            while len(top_mag_fft) < self.FFT_NUM:
-                top_mag_fft.append(0)
-        mag_df = pd.DataFrame([top_mag_fft], columns=mag_cols)
-
-        freq_values = sorted( [(x,i) for (i,x) in enumerate(frequencies)], reverse=True)
-        top_freq_fft = []
-        for x,i in freq_values:
-            if x not in top_freq_fft:
-                top_freq_fft.append( x )
-                if len(top_freq_fft) == self.FFT_NUM:
-                        break
-        if len(top_freq_fft) < self.FFT_NUM:
-            while len(top_freq_fft) < self.FFT_NUM:
-                top_freq_fft.append(0)
-        freq_df = pd.DataFrame([top_freq_fft], columns=freq_cols)
-        df = pd.concat((mag_df, freq_df), axis=1)
-        return df
-
-    def process_csv(self, df):
-        bufs = {}
-        for col in df.columns:
-            bufs[col] = []
-        for _, row in df.iterrows():
-            # Append readings
-            for col in df.columns:
-                bufs[col].append(row[col])
-        
-        df = pd.DataFrame([bufs])
-        return df
     
     def feature_eng(self, df):
         cols = ['gun_ax', 'gun_ay', 'gun_az', 'gun_gx', 'gun_gy', 'gun_gz', 'glove_ax', 'glove_ay', 'glove_az', 'glove_gx', 'glove_gy', 'glove_gz']
@@ -174,8 +87,6 @@ class AiEngine:
 
     def classify(self, df: pd.DataFrame) -> str:
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~AI Preprocessing~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#   
-        # df = self.process_csv(df)
-        # df.reset_index(drop=True, inplace=True)
         # Feature engineering
         df = self.feature_eng(df)
         # Scaling
@@ -266,7 +177,7 @@ class AiEngine:
                 logger.warning("AI Engine: Starting to collect data for prediction")
                 for i in range(self.MAX_PREDICTION_DATA_POINTS):
                     try:
-                        packet = await asyncio.wait_for(self.read_buffer.get(), timeout=0.8)
+                        packet = await asyncio.wait_for(self.read_buffer.get(), timeout=self.PACKET_TIMEOUT)
                         bufs['gun_ax'].append(packet.gun_ax)
                         bufs['gun_ay'].append(packet.gun_ay)
                         bufs['gun_az'].append(packet.gun_az)

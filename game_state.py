@@ -34,7 +34,7 @@ class GameState:
 
         return snow_number
 
-    def perform_action(self, action, player_id, fov, snow_number) -> bool:
+    def perform_action(self, action, player_id, fov, snow_number, visualiser_state) -> bool:
         """use the user sent action to alter the game state"""
 
         if player_id == 1:
@@ -43,7 +43,8 @@ class GameState:
         else:
             attacker = self.player_2
             opponent = self.player_1
-
+        # TODO: Use actual fov and snow number.
+        fov, snow_number = visualiser_state.get_fov(), visualiser_state.get_snow_number()
         attacker.rain_damage(opponent, fov, snow_number)
 
         action_possible = True
@@ -52,7 +53,7 @@ class GameState:
             fov = False
 
         # perform the actual action
-        if action == "gun" or "miss":
+        if action == "gun" or action == "miss":
             action_possible = attacker.shoot(opponent, fov)
         elif action == "shield":
             action_possible = attacker.shield()
@@ -173,13 +174,15 @@ class Player:
         return True
 
     #TODO: Implement bomb, add the start to a rain/snow in the quadrant of the opponent
-    def bomb(self, opponent, fov: bool) -> bool:
+    def bomb(self, opponent, fov: bool, visualiser_state) -> bool:
         """Throw a bomb at opponent"""
         if self.num_bombs <= 0:
             return False
         self.num_bombs -= 1
         if fov:
             opponent.damage(self.hp_bomb)
+            # TODO: Use actual fov and snow number
+            visualiser_state.set_snow_number(visualiser_state.get_snow_number() + 1)
 
         return True
 

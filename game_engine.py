@@ -188,7 +188,7 @@ class GameEngine:
                     logger.critical(f"Dropping action: {action}")
                     continue
                 fov, snow_number = self.p1_visualiser_state.get_fov(), self.p1_visualiser_state.get_snow_number()
-                hit, action_possible = self.game_state.perform_action(action, 1, fov, snow_number)
+                hit, action_possible = self.game_state.perform_action(action, 1, fov, snow_number, self.p1_visualiser_state)
                 action = "gun" if action == "miss" else action
                 await self.send_visualiser_action(ACTION_TOPIC, 1, action, hit, action_possible, snow_number)
                 # Prepare for eval_server
@@ -242,19 +242,21 @@ class GameEngine:
         return json.dumps(eval_data)
     
     def generate_game_state_packet(self) -> tuple[GunPacket, GunPacket, HealthPacket, HealthPacket]:
+        # p1gun, p2gun = 1, 4
+        # p1health, p2health = 3, 6
         p1_gun_packet = GunPacket()
-        p1_gun_packet.player, p1_gun_packet.ammo = 1, self.game_state.player_1.num_bullets
+        p1_gun_packet.player, p1_gun_packet.ammo = 4, self.game_state.player_1.num_bullets
         logger.info(f"Sending ammo packet to relay server p1")
         p2_gun_packet = GunPacket()
-        p2_gun_packet.player, p2_gun_packet.ammo = 4, self.game_state.player_2.num_bullets
+        p2_gun_packet.player, p2_gun_packet.ammo = 1, self.game_state.player_2.num_bullets
         logger.info(f"Sending ammo packet to relay server p2")
 
         p1_health_packet = HealthPacket()
-        p1_health_packet.player = 3
+        p1_health_packet.player = 6
         p1_health_packet.p_health, p1_health_packet.s_health = self.game_state.player_1.hp, self.game_state.player_1.hp_shield
         logger.info(f"Sending health packet to relay server p1")
         p2_health_packet = HealthPacket()
-        p2_health_packet.player = 6
+        p2_health_packet.player = 3
         p2_health_packet.p_health, p2_health_packet.s_health = self.game_state.player_2.hp, self.game_state.player_2.hp_shield
         logger.info(f"Sending health packet to relay server: p2")
 
@@ -339,7 +341,7 @@ class GameEngine:
             asyncio.create_task(self.prediction_process()),
             asyncio.create_task(self.eval_process()),
             asyncio.create_task(self.process()),
-            asyncio.create_task(self.visualiser_state_process()),
+            # asyncio.create_task(self.visualiser_state_process()),
             asyncio.create_task(self.connection_process())
         ]
         try:
