@@ -28,6 +28,7 @@ class AiEngine:
         self.write_buffer = write_buffer
         self.game_engine_event = game_engine_event
         self.visualiser_send_buffer = visualiser_send_buffer
+        self.COLUMNS = ['gun_ax', 'gun_ay', 'gun_az', 'gun_gx', 'gun_gy', 'gun_gz', 'glove_ax', 'glove_ay', 'glove_az', 'glove_gx', 'glove_gy', 'glove_gz']
         self.bitstream_path = "/home/xilinx/capstone/FPGA-AI/off_mlp_comb_nofreq.bit"
         self.input_size = 228 # Actual:300
         self.output_size = 8  # Actual:9
@@ -171,14 +172,8 @@ class AiEngine:
         
         return row_df
 
-    def classify(self, data: np.ndarray) -> str:
+    def classify(self, df: pd.DataFrame) -> str:
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~AI Preprocessing~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#   
-        df = pd.DataFrame(
-            np.transpose(data),
-            columns=[
-            'gun_ax', 'gun_ay', 'gun_az', 'gun_gx', 'gun_gy', 'gun_gz', 
-            'glove_ax', 'glove_ay', 'glove_az', 'glove_gx', 'glove_gy', 'glove_gz'
-        ])
         # df = self.process_csv(df)
         # df.reset_index(drop=True, inplace=True)
         # Feature engineering
@@ -264,37 +259,42 @@ class AiEngine:
         try:
             while True:
                 await self.clear_queue(self.read_buffer)
-                data = np.zeros((12, self.MAX_PREDICTION_DATA_POINTS), dtype=np.float32)
+                bufs, packets = {}, 0
+                for col in self.COLUMNS:
+                    bufs[col] = []
+
                 logger.warning("AI Engine: Starting to collect data for prediction")
                 for i in range(self.MAX_PREDICTION_DATA_POINTS):
                     try:
                         packet = await asyncio.wait_for(self.read_buffer.get(), timeout=0.8)
-                        data[0, i] = packet.gun_ax
-                        data[1, i] = packet.gun_ay
-                        data[2, i] = packet.gun_az
-                        data[3, i] = packet.gun_gx
-                        data[4, i] = packet.gun_gy
-                        data[5, i] = packet.gun_gz
-                        data[6, i] = packet.glove_ax
-                        data[7, i] = packet.glove_ay
-                        data[8, i] = packet.glove_az
-                        data[9, i] = packet.glove_gx
-                        data[10, i] = packet.glove_gy
-                        data[11, i] = packet.glove_gz
-
+                        bufs['gun_ax'].append(packet.gun_ax)
+                        bufs['gun_ay'].append(packet.gun_ay)
+                        bufs['gun_az'].append(packet.gun_az)
+                        bufs['gun_gx'].append(packet.gun_gx)
+                        bufs['gun_gy'].append(packet.gun_gy)
+                        bufs['gun_gz'].append(packet.gun_gz)
+                        bufs['glove_ax'].append(packet.glove_ax)
+                        bufs['glove_ay'].append(packet.glove_ay)
+                        bufs['glove_az'].append(packet.glove_az)
+                        bufs['glove_gx'].append(packet.glove_gx)
+                        bufs['glove_gy'].append(packet.glove_gy)
+                        bufs['glove_gz'].append(packet.glove_gz)
+                        packets += 1
                         logger.warning(f"IMU packet Received on AI: {i+1}")
 
                     except asyncio.TimeoutError:
                         break
 
                 # If data buffer is < threshold, we skip processing and continue to the next iteration
-                if data.shape[1] < 10:
-                    logger.warning(f"{data.shape[1]} packets received. Skipping prediction")
+                if packets < 10:
+                    logger.warning(f"{packets} packets received. Skipping prediction")
                     continue
+
+                df = pd.DataFrame([bufs])
 
                 await self.send_visualiser_cooldown(COOLDOWN_TOPIC, 1, False)
                 # Perform inference in a separate thread
-                predicted_data = await asyncio.to_thread(self.classify, data)
+                predicted_data = await asyncio.to_thread(self.classify, df)
                 predicted_data = "bomb" if predicted_data == "snowbomb" else predicted_data
                 logger.warning(f"AI Engine Prediction: {predicted_data}")
 
