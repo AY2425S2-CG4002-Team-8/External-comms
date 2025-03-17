@@ -252,11 +252,11 @@ class GameEngine:
         logger.info(f"Sending ammo packet to relay server p2")
 
         p1_health_packet = HealthPacket()
-        p1_health_packet.player = 6
+        p1_health_packet.player = 3
         p1_health_packet.p_health, p1_health_packet.s_health = self.game_state.player_1.hp, self.game_state.player_1.hp_shield
         logger.info(f"Sending health packet to relay server p1")
         p2_health_packet = HealthPacket()
-        p2_health_packet.player = 3
+        p2_health_packet.player = 6
         p2_health_packet.p_health, p2_health_packet.s_health = self.game_state.player_2.hp, self.game_state.player_2.hp_shield
         logger.info(f"Sending health packet to relay server: p2")
 
