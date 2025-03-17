@@ -245,10 +245,10 @@ class GameEngine:
         # p1gun, p2gun = 1, 4
         # p1health, p2health = 3, 6
         p1_gun_packet = GunPacket()
-        p1_gun_packet.player, p1_gun_packet.ammo = 4, self.game_state.player_1.num_bullets
+        p1_gun_packet.player, p1_gun_packet.ammo = 1, self.game_state.player_1.num_bullets
         logger.info(f"Sending ammo packet to relay server p1")
         p2_gun_packet = GunPacket()
-        p2_gun_packet.player, p2_gun_packet.ammo = 1, self.game_state.player_2.num_bullets
+        p2_gun_packet.player, p2_gun_packet.ammo = 4, self.game_state.player_2.num_bullets
         logger.info(f"Sending ammo packet to relay server p2")
 
         p1_health_packet = HealthPacket()
