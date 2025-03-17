@@ -131,7 +131,8 @@ class GameEngine:
         while True:
             try:
                 connection_packet = await self.connection_buffer.get()
-                player, device, first_conn = connection_packet.player, connection_packet.device, connection_packet.first_conn
+                # player, device, first_conn = connection_packet.player, connection_packet.device, connection_packet.first_conn
+                player, device, first_conn = 1, connection_packet.device, connection_packet.first_conn
                 if first_conn:
                     self.send_relay_node()
                 if device == 12:
