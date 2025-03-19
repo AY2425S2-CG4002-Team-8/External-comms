@@ -209,6 +209,7 @@ class AiEngine:
                 predicted_data = "bomb" if predicted_data == "snowbomb" else predicted_data
                 logger.warning(f"AI Engine Prediction: {predicted_data}")
 
+
                 await self.write_buffer.put(predicted_data)
                 await asyncio.sleep(3)
                 await self.send_visualiser_cooldown(COOLDOWN_TOPIC, 1, True)

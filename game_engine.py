@@ -27,6 +27,7 @@ class GameEngine:
         self.eval_client_read_buffer = asyncio.Queue()
         self.eval_client_send_buffer = asyncio.Queue()
         self.visualiser_read_buffer = asyncio.Queue()
+        self.visualiser_fov_read_buffer = asyncio.Queue()
         self.visualiser_send_buffer = asyncio.Queue()
         self.relay_server_read_buffer = asyncio.Queue()
         self.relay_server_send_buffer = asyncio.Queue()
