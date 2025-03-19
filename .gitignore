@@ -1,3 +1,5 @@
 .venv
 .vscode
 tcp\__pycache__
+mqtt\__pycache__
+config.py

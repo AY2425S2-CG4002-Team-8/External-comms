@@ -11,15 +11,15 @@ CONN = 5
 
 class PacketFactory:
     def create_packet(packet_byte_array: bytearray):
-        logger.debug(f"Packet = {packet_byte_array}")
         packet_type = packet_byte_array[0]
-        logger.debug(f"Packet_type = {packet_type}")
         if packet_type == IMU:
             return ImuPacket(packet_byte_array)
         elif packet_type == GUN:
             return GunPacket(packet_byte_array)
         elif packet_type == HEALTH:
             return HealthPacket(packet_byte_array)
+        elif packet_type == CONN:
+            return ConnPacket(packet_byte_array)
         else:
             raise ValueError(f"Unknown packet type: {packet_type}")
 
@@ -125,16 +125,21 @@ class ConnPacket:
         self.type = CONN
         if byteArray is None:
             self.player = bytearray(1) 
-            self.connected = bytearray(1)
+            self.device = bytearray(1)
+            self.first_conn = bytearray(1)
+
         else:
             self.player = byteArray[1]
-            self.connected = byteArray[2]
+            self.device = byteArray[2]
+            self.first_conn = byteArray[3]
 
     def to_bytes(self) -> bytearray:
         byte_array = bytearray()
         byte_array.append(self.type)
         byte_array.append(self.player)
-        byte_array.append(self.connected)
+        byte_array.append(self.device)
+        byte_array.append(self.first_conn)
+        
         return byte_array
     
     def __len__(self):

@@ -23,18 +23,7 @@ class GameState:
         player.set_state(bullets_remaining, bombs_remaining, hp, num_deaths,
                          num_unused_shield, shield_health)
         
-    def perform_avalanche(self, player_id, fov, snow_number) -> None:
-        if player_id == 1:
-            attacker = self.player_1
-            opponent = self.player_2
-        else:
-            attacker = self.player_2
-            opponent = self.player_1
-        attacker.rain_damage(opponent, fov, snow_number)
-
-        return snow_number
-
-    def perform_action(self, action, player_id, fov) -> bool:
+    def perform_action(self, action, player_id, fov, snow_number, visualiser_state) -> bool:
         """use the user sent action to alter the game state"""
 
         if player_id == 1:
@@ -43,21 +32,22 @@ class GameState:
         else:
             attacker = self.player_2
             opponent = self.player_1
-
+        # TODO: Use actual fov and snow number.
+        fov, snow_number = visualiser_state.get_fov(), visualiser_state.get_snow_number()
+        attacker.rain_damage(opponent, fov, snow_number)
         action_possible = True
 
-        if action == "miss":
-            return False, action_possible
-
         # perform the actual action
-        if action == "gun":
-            action_possible = attacker.shoot(opponent)
+        # if action == "miss":
+        #     return False, action_possible
+        if action == "gun" or action == "miss":
+            action_possible = attacker.shoot(opponent, fov)
         elif action == "shield":
             action_possible = attacker.shield()
         elif action == "reload":
             action_possible = attacker.reload()
         elif action == "bomb":
-            action_possible = attacker.bomb(opponent, fov)
+            action_possible = attacker.bomb(opponent, fov, visualiser_state, snow_number)
         elif action in {"badminton", "golf", "fencing", "boxing"}:
             # all these have the same behaviour
             attacker.harm_AI(opponent, fov)
@@ -137,11 +127,12 @@ class Player:
         self.num_deaths     = num_deaths
 
     #TODO: Attain ammo data from the gun packet + health from health packet
-    def shoot(self, opponent) -> bool:
+    def shoot(self, opponent, fov) -> bool:
         if self.num_bullets <= 0:
             return False
         self.num_bullets -= 1
-        opponent.damage(self.hp_bullet)
+        if fov:
+            opponent.damage(self.hp_bullet)
 
         return True
 
@@ -159,7 +150,6 @@ class Player:
             # if we die, we spawn immediately
             self.num_deaths += 1
             self.set_state(self.max_bullets, self.max_bombs, self.max_hp, self.num_deaths, self.max_shields, 0)
-        print("After damage: ", self.hp)
 
     def shield(self) -> bool:
         """Activate shield"""
@@ -171,13 +161,15 @@ class Player:
         return True
 
     #TODO: Implement bomb, add the start to a rain/snow in the quadrant of the opponent
-    def bomb(self, opponent, fov: bool) -> bool:
+    def bomb(self, opponent, fov: bool, visualiser_state, snow_number: int) -> bool:
         """Throw a bomb at opponent"""
         if self.num_bombs <= 0:
             return False
         self.num_bombs -= 1
         if fov:
             opponent.damage(self.hp_bomb)
+            # TODO: Use actual fov and snow number
+            visualiser_state.set_snow_number(snow_number + 1)
 
         return True
 
