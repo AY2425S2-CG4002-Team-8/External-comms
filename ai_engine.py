@@ -19,18 +19,20 @@ class AiEngine:
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Engine Init~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#   
 
-    def __init__(self, read_buffer: asyncio.Queue, write_buffer:asyncio.Queue, visualiser_send_buffer: asyncio.Queue, game_engine_event: asyncio.Event):
+    def __init__(self, p1_read_buffer: asyncio.Queue, p2_read_buffer: asyncio.Queue, write_buffer: asyncio.Queue, visualiser_send_buffer: asyncio.Queue, game_engine_event: asyncio.Event):
         PL.reset()
         self.MAX_PREDICTION_DATA_POINTS = 30 # Actual:30
-        self.FFT_NUM = 2
         self.FEATURE_SIZE = 12
         self.PACKET_TIMEOUT = 0.2
-        self.read_buffer = read_buffer
+
+        self.p1_read_buffer = p1_read_buffer
+        self.p2_read_buffer = p2_read_buffer
         self.write_buffer = write_buffer
         self.game_engine_event = game_engine_event
         self.visualiser_send_buffer = visualiser_send_buffer
+
         self.COLUMNS = ['gun_ax', 'gun_ay', 'gun_az', 'gun_gx', 'gun_gy', 'gun_gz', 'glove_ax', 'glove_ay', 'glove_az', 'glove_gx', 'glove_gy', 'glove_gz']
-        self.bitstream_path = "/home/xilinx/capstone/FPGA-AI/off_mlp_comb_nofreq_trim30.bit"
+        self.bitstream_path = "/home/xilinx/capstone/FPGA-AI/off_mlp_comb_nofreq_trim30_dual.bit"
         self.input_size = 108 # Actual:300
         self.output_size = 10  # Actual:9
         self.scaler_path = "/home/xilinx/capstone/FPGA-AI/robust_scaler_aug_nofreq_trim30.save"
@@ -44,19 +46,32 @@ class AiEngine:
         # Insert overlay and set up modules
         self.ol = Overlay(self.bitstream_path)
         if not self.ol.axi_dma_0:
-            print("ERROR: DMA Not Detected")
+            print("ERROR: DMA 0 Not Detected")
             exit
-        self.dma = self.ol.axi_dma_0
-        self.dma_send = self.dma.sendchannel
-        self.dma_recv = self.dma.recvchannel
+        self.dma_0 = self.ol.axi_dma_0
+        self.dma_0_send = self.dma_0.sendchannel
+        self.dma_0_recv = self.dma_0.recvchannel
 
-        if self.ol.action_mlp_0:
-            self.mlp = self.ol.action_mlp_0
-        elif self.ol.action_mlp_1:
-            self.mlp = self.ol.action_mlp_1
+        if not self.ol.axi_dma_1:
+            print("ERROR: DMA 1 Not Detected")
+            exit
+        self.dma_1 = self.ol.axi_dma_1
+        self.dma_1_send = self.dma_1.sendchannel
+        self.dma_1_recv = self.dma_1.recvchannel
+
+        if not self.ol.action_mlp_0:
+            print("ERROR: MLP 0 Not Detected")
+            exit
+        self.mlp_0 = self.ol.action_mlp_0
+
+        if not self.ol.action_mlp_1:
+            print("ERROR: MLP 1 Not Detected")
+            exit
+        self.mlp_1 = self.ol.action_mlp_1
 
         # Activate neural network IP module
-        self.mlp.write(0x0, 0x81) # 0 (AP_START) to “1” and bit 7 (AUTO_RESTART) to “1”
+        self.mlp_0.write(0x0, 0x81) # 0 (AP_START) to “1” and bit 7 (AUTO_RESTART) to “1”
+        self.mlp_1.write(0x0, 0x81) # 0 (AP_START) to “1” and bit 7 (AUTO_RESTART) to “1”
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~AI Preprocessing~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#   
     
@@ -79,13 +94,10 @@ class AiEngine:
             cell_df[f'{col}_iqr'] = time_series.quantile(0.75) - time_series.quantile(0.25)
         
             row_df = pd.concat((row_df, cell_df), axis=1)
-
-           # fft_df = self.get_fft(time_series)
-            #row_df = pd.concat((row_df, fft_df), axis=1)
         
         return row_df
 
-    def classify(self, df: pd.DataFrame) -> str:
+    def classify(self, df: pd.DataFrame, player: int) -> str:
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~AI Preprocessing~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#   
         # Feature engineering
         df = self.feature_eng(df)
@@ -98,19 +110,34 @@ class AiEngine:
         output_buffer = allocate(shape=(self.output_size,), dtype=np.float32)
         for i in range(self.input_size):
             input_buffer[i] = input[i]
-        self.dma_send.transfer(input_buffer)
-        self.dma_recv.transfer(output_buffer)
-        
-        # Wait for completion
-        self.dma_send.wait()
-        self.dma_recv.wait()
-        
-        if(self.dma_send.error):
-            print("DMA_SEND ERR: " + self.dma_send.error)
-        if(self.dma_recv.error):
-            print("DMA_RECV ERR: " + self.dma_recv.error)
 
-        #TODO: Check softmax confidence level and classify low confidence as null
+        # Player 1
+        if player == 1:
+            self.dma_0_send.transfer(input_buffer)
+            self.dma_0_recv.transfer(output_buffer)
+
+            # Wait for completion
+            self.dma_0_send.wait()
+            self.dma_0_recv.wait()
+
+            if(self.dma_0_send.error):
+                print("DMA_0 SEND ERR: " + self.dma_0_send.error)
+            if(self.dma_0_recv.error):
+                print("DMA_0 RECV ERR: " + self.dma_0_recv.error)
+
+        # Player 2
+        else:
+            self.dma_1_send.transfer(input_buffer)
+            self.dma_1_recv.transfer(output_buffer)
+
+            # Wait for completion
+            self.dma_1_send.wait()
+            self.dma_1_recv.wait()
+
+            if(self.dma_1_send.error):
+                print("DMA_1 SEND ERR: " + self.dma_1_send.error)
+            if(self.dma_1_recv.error):
+                print("DMA_1 RECV ERR: " + self.dma_1_recv.error)
 
         pred = np.argmax(output_buffer)
         pred_class = self.label_encoder.inverse_transform([pred])
@@ -119,7 +146,8 @@ class AiEngine:
     
     async def run(self) -> None:
         await asyncio.gather(
-            self.predict(1)
+            self.predict(player=1, read_buffer=self.p1_read_buffer),
+            self.predict(player=2, read_buffer=self.p2_read_buffer)
         )
 
     async def clear_queue(self, queue: asyncio.Queue) -> None:
@@ -160,8 +188,7 @@ class AiEngine:
         df = pd.DataFrame.from_dict(data_dictionary)
         df.to_csv(filename, index=False)  # Save without row indices
 
-    #TODO: Remove testing parameters
-    async def predict(self, player: int) -> None:
+    async def predict(self, player: int, read_buffer: asyncio.Queue) -> None:
         """
         Collects self.PREDICTION_DATA_POINTS packets to form a dictionary of arrays (current implementation) for AI inference
         AI inference is against hardcoded dummy IMU data
@@ -169,7 +196,7 @@ class AiEngine:
 
         try:
             while True:
-                await self.clear_queue(self.read_buffer)
+                await self.clear_queue(read_buffer)
                 bufs, packets = {}, 0
                 for col in self.COLUMNS:
                     bufs[col] = []
@@ -177,7 +204,7 @@ class AiEngine:
                 logger.warning("AI Engine: Starting to collect data for prediction")
                 for i in range(self.MAX_PREDICTION_DATA_POINTS):
                     try:
-                        packet = await asyncio.wait_for(self.read_buffer.get(), timeout=self.PACKET_TIMEOUT)
+                        packet = await asyncio.wait_for(read_buffer.get(), timeout=self.PACKET_TIMEOUT)
                         bufs['gun_ax'].append(packet.gun_ax)
                         bufs['gun_ay'].append(packet.gun_ay)
                         bufs['gun_az'].append(packet.gun_az)
@@ -200,16 +227,15 @@ class AiEngine:
                 if packets < 10:
                     logger.warning(f"{packets} packets received. Skipping prediction")
                     continue
-
+                
+                await self.send_visualiser_cooldown(COOLDOWN_TOPIC, 1, False)
                 df = pd.DataFrame([bufs])
 
-                await self.send_visualiser_cooldown(COOLDOWN_TOPIC, 1, False)
-                # Perform inference in a separate thread
-                predicted_data = await asyncio.to_thread(self.classify, df)
+                predicted_data = await asyncio.to_thread(self.classify, df, player)
                 predicted_data = "bomb" if predicted_data == "snowbomb" else predicted_data
                 logger.warning(f"AI Engine Prediction: {predicted_data}")
 
-                await self.write_buffer.put(predicted_data)
+                await self.write_buffer.put((player, predicted_data))
                 await asyncio.sleep(3)
                 await self.send_visualiser_cooldown(COOLDOWN_TOPIC, 1, True)
 

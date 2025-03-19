@@ -28,6 +28,7 @@ class ImuPacket:
         self.type = IMU
         if byteArray is None:
             self.seq = bytearray(1)
+            self.player = bytearray(1)
             self.gun_ax = bytearray(2)
             self.gun_ay = bytearray(2)
             self.gun_az = bytearray(2)
@@ -39,27 +40,29 @@ class ImuPacket:
             self.glove_az = bytearray(2)
             self.glove_gx = bytearray(2)
             self.glove_gy = bytearray(2)
-            self.glove_gz = bytearray(2) # Total 25 byte
+            self.glove_gz = bytearray(2) # Total 26 byte
         else:
             self.seq = byteArray[1]
-            self.gun_ax = struct.unpack('<h',byteArray[2:4])[0]
-            self.gun_ay = struct.unpack('<h',byteArray[4:6])[0]
-            self.gun_az = struct.unpack('<h',byteArray[6:8])[0]
-            self.gun_gx = struct.unpack('<h',byteArray[8:10])[0]
-            self.gun_gy = struct.unpack('<h',byteArray[10:12])[0]
-            self.gun_gz = struct.unpack('<h',byteArray[12:14])[0]
-            self.glove_ax = struct.unpack('<h',byteArray[14:16])[0]
-            self.glove_ay = struct.unpack('<h',byteArray[16:18])[0]
-            self.glove_az = struct.unpack('<h',byteArray[18:20])[0]
-            self.glove_gx = struct.unpack('<h',byteArray[20:22])[0] 
-            self.glove_gy = struct.unpack('<h',byteArray[22:24])[0]
-            self.glove_gz = struct.unpack('<h',byteArray[24:26])[0]
+            self.player = byteArray[2]
+            self.gun_ax = struct.unpack('<h', byteArray[3:5])[0]
+            self.gun_ay = struct.unpack('<h', byteArray[5:7])[0]
+            self.gun_az = struct.unpack('<h', byteArray[7:9])[0]
+            self.gun_gx = struct.unpack('<h', byteArray[9:11])[0]
+            self.gun_gy = struct.unpack('<h', byteArray[11:13])[0]
+            self.gun_gz = struct.unpack('<h', byteArray[13:15])[0]
+            self.glove_ax = struct.unpack('<h', byteArray[15:17])[0]
+            self.glove_ay = struct.unpack('<h', byteArray[17:19])[0]
+            self.glove_az = struct.unpack('<h', byteArray[19:21])[0]
+            self.glove_gx = struct.unpack('<h',  byteArray[21:23])[0]
+            self.glove_gy = struct.unpack('<h', byteArray[23:25])[0]
+            self.glove_gz = struct.unpack('<h', byteArray[25:27])[0]
 
     def to_bytes(self) -> bytes:
         """Convert ImuPacket to bytes for transmission."""
         return (
             struct.pack('<B', self.type)
             + struct.pack('<B', self.seq)
+            + struct.pack('<B', self.player)
             + struct.pack('<h', self.gun_ax)
             + struct.pack('<h', self.gun_ay)
             + struct.pack('<h', self.gun_az)
