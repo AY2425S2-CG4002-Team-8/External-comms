@@ -19,7 +19,7 @@ class AiEngine:
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Engine Init~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#   
 
-    def __init__(self, p1_read_buffer: asyncio.Queue, p2_read_buffer: asyncio.Queue, write_buffer: asyncio.Queue, visualiser_send_buffer: asyncio.Queue, game_engine_event: asyncio.Event):
+    def __init__(self, p1_read_buffer: asyncio.Queue, p2_read_buffer: asyncio.Queue, write_buffer: asyncio.Queue, visualiser_send_buffer: asyncio.Queue):
         PL.reset()
         self.MAX_PREDICTION_DATA_POINTS = 30 # Actual:30
         self.FEATURE_SIZE = 12
@@ -28,7 +28,6 @@ class AiEngine:
         self.p1_read_buffer = p1_read_buffer
         self.p2_read_buffer = p2_read_buffer
         self.write_buffer = write_buffer
-        self.game_engine_event = game_engine_event
         self.visualiser_send_buffer = visualiser_send_buffer
 
         self.COLUMNS = ['gun_ax', 'gun_ay', 'gun_az', 'gun_gx', 'gun_gy', 'gun_gz', 'glove_ax', 'glove_ay', 'glove_az', 'glove_gx', 'glove_gy', 'glove_gz']
