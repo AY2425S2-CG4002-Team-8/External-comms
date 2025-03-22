@@ -25,6 +25,8 @@ class GameEngine:
         self.p1_event = asyncio.Event()
         self.p2_event = asyncio.Event()
 
+        self.eval_client = None
+
         self.eval_client_read_buffer = asyncio.Queue()
         self.eval_client_send_buffer = asyncio.Queue()
         self.visualiser_read_buffer = asyncio.Queue()
@@ -62,7 +64,7 @@ class GameEngine:
             logger.error("Failed to run MQTT Task")
 
     async def initiate_eval_client(self):
-        eval_client = EvalClient(
+        self.eval_client = EvalClient(
             secret_key=SECRET_KEY,
             host=HOST,
             port=self.port,
@@ -70,7 +72,7 @@ class GameEngine:
             eval_client_send_buffer=self.eval_client_send_buffer
         )
         logger.critical("Starting Eval_Client")
-        await eval_client.run()
+        await self.eval_client.run()
 
     async def initiate_relay_server(self):
         relay_server = RelayServer(
@@ -204,7 +206,8 @@ class GameEngine:
                 # Prepare for eval_server
                 eval_data = self.generate_game_state(player, action)
                 logger.critical(f"Sending eval data for player {player} to eval_server: {eval_data}")
-                await self.eval_client_send_buffer.put(eval_data)
+                # await self.eval_client_send_buffer.put(eval_data)
+                await self.eval_client.tcp_client.send_message(eval_data)
                 if player == 1:
                     self.p1_event.set()
                 else:
