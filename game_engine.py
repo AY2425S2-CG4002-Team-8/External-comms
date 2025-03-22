@@ -226,10 +226,6 @@ class GameEngine:
             logger.critical(f"Received game state from eval_server = {eval_game_state}")
             self.update_game_state(eval_game_state)
 
-            eval_game_state = await self.eval_client_read_buffer.get()
-            logger.critical(f"Received game state from eval_server = {eval_game_state}")
-            self.update_game_state(eval_game_state)
-            
             # Propagate the final game state to visualiser with ignored action and hit
             mqtt_message = self.generate_action_mqtt_message(1, None, None, None, None)
             await self.send_relay_node()
