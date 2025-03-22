@@ -41,7 +41,8 @@ class GameEngine:
         self.p1_health_buffer = asyncio.Queue()
         self.p2_gun_buffer = asyncio.Queue()
         self.p2_health_buffer = asyncio.Queue()
-        self.event_buffer = asyncio.Queue()
+        self.p1_event_buffer = asyncio.Queue()
+        self.p2_event_buffer = asyncio.Queue()
 
         self.tasks = []
 
@@ -64,7 +65,7 @@ class GameEngine:
             logger.error("Failed to run MQTT Task")
 
     async def initiate_eval_client(self):
-        self.eval_client = EvalClient(
+        eval_client = EvalClient(
             secret_key=SECRET_KEY,
             host=HOST,
             port=self.port,
@@ -72,7 +73,7 @@ class GameEngine:
             eval_client_send_buffer=self.eval_client_send_buffer
         )
         logger.critical("Starting Eval_Client")
-        await self.eval_client.run()
+        await eval_client.run()
 
     async def initiate_relay_server(self):
         relay_server = RelayServer(
@@ -155,22 +156,21 @@ class GameEngine:
             except Exception as e:
                 logger.error(f"Error in connection_process: {e}")
     
-    async def gun_process(self, gun_buffer: asyncio.Queue, health_buffer: asyncio.Queue) -> None:
+    async def gun_process(self, gun_buffer: asyncio.Queue, health_buffer: asyncio.Queue, event_buffer: asyncio.Queue) -> None:
         """
         When gun packet is received, wait for health packet with timeout
         If health packet received before timeout, IR registered , and puts in central event buffer. Else, shot missed
         """
         while True:
             try:
-                player = await gun_buffer.get()
                 logger.critical(f"Attempted to shoot")
                 try:
                     await asyncio.wait_for(health_buffer.get(), timeout=GUN_TIMEOUT)
                     logger.critical("Hit - Received health packet")
-                    await self.event_buffer.put((player, "gun"))
+                    await event_buffer.put("gun")
                     logger.critical("Added gun to action buffer")
                 except asyncio.TimeoutError:
-                    await self.event_buffer.put((player, "miss"))
+                    await event_buffer.put("miss")
                     logger.critical(f"Missed - No Health Packet Received")
             except Exception as e:
                 logger.error(f"Error in handle_gun: {e}")
@@ -182,37 +182,34 @@ class GameEngine:
         while True:
             try:
                 player, predicted_data = await self.ai_engine_write_buffer.get()
-                await self.event_buffer.put((player, predicted_data))
+                if player == 1:
+                    await self.p1_event_buffer.put(predicted_data)
+                else:
+                    await self.p2_event_buffer.put(predicted_data)
             except Exception as e:
                 logger.error(f"Error in prediction process: {e}")
     
-    async def process(self) -> None:
+    async def process(self, player: int, event_buffer: asyncio.Queue) -> None:
         """
         Sends action (gun or AI) to visualiser, followed by the avalanche damage if any.
         Updates game state accordingly and puts into eval_client_send_buffer to queue sending to eval_server
         """
         while True:
             try:
-                # event_buffer: (player: int, action: str)
-                player, action = await self.event_buffer.get()
+                action = await event_buffer.get()
                 logger.critical(f"action: {action}")
                 if action == "shoot" or action == "walk":
                     logger.critical(f"Dropping action: {action}")
                     continue
-
                 fov, snow_number = self.p1_visualiser_state.get_fov(), self.p1_visualiser_state.get_snow_number()
                 hit, action_possible = self.game_state.perform_action(action, player, fov, snow_number)
                 action = "gun" if action == "miss" else action
                 # Prepare for eval_server
                 eval_data = self.generate_game_state(player, action)
                 logger.critical(f"Sending eval data for player {player} to eval_server: {eval_data}")
-                # await self.eval_client_send_buffer.put(eval_data)
-                await self.eval_client.tcp_client.send_message(eval_data)
-                if player == 1:
-                    self.p1_event.set()
-                else:
-                    self.p2_event.set()
+                await self.eval_client_send_buffer.put(eval_data)
                 await self.send_visualiser_action(ACTION_TOPIC, player, action, hit, action_possible, snow_number)
+                await self.eval_process()
                 
             except Exception as e:
                 logger.error(f"Exception in process: {e}")
@@ -222,34 +219,23 @@ class GameEngine:
         Listens to eval_client_read_buffer for eval_server updates
         Puts updated game state into relay_server and visualiser send_buffers to update
         """ 
-        while True:
-            try:
-                await asyncio.wait_for(
-                    asyncio.gather(
-                        self.p1_event.wait(),
-                        self.p2_event.wait()
-                    ),
-                    timeout=EVENT_TIMEOUT 
-                )
-                # Double await to clear both flags after both updates received
-                eval_game_state = await self.eval_client_read_buffer.get()
-                logger.critical(f"Received game state from eval_server = {eval_game_state}")
-                self.update_game_state(eval_game_state)
+        try:
+            # Double await to clear both flags after both updates received
+            eval_game_state = await self.eval_client_read_buffer.get()
+            logger.critical(f"Received game state from eval_server = {eval_game_state}")
+            self.update_game_state(eval_game_state)
 
-                eval_game_state = await self.eval_client_read_buffer.get()
-                logger.critical(f"Received game state from eval_server = {eval_game_state}")
-                self.update_game_state(eval_game_state)
-                
-                # Propagate the final game state to visualiser with ignored action and hit
-                mqtt_message = self.generate_action_mqtt_message(1, None, None, None, None)
-                await self.send_relay_node()
-                await self.visualiser_send_buffer.put((ACTION_TOPIC, mqtt_message))
-                
-                # Clear events for the next round
-                self.p1_event.clear()
-                self.p2_event.clear()
-            except Exception as e:
-                logger.error(f"Error in eval_process: {e}")
+            eval_game_state = await self.eval_client_read_buffer.get()
+            logger.critical(f"Received game state from eval_server = {eval_game_state}")
+            self.update_game_state(eval_game_state)
+            
+            # Propagate the final game state to visualiser with ignored action and hit
+            mqtt_message = self.generate_action_mqtt_message(1, None, None, None, None)
+            await self.send_relay_node()
+            await self.visualiser_send_buffer.put((ACTION_TOPIC, mqtt_message))
+        
+        except Exception as e:
+            logger.error(f"Error in eval_process: {e}")
                 
     async def send_visualiser_connection(self, topic: str, player: int, device: str) -> None:
         message = self.generate_connection_mqtt_message(player, device)
@@ -370,8 +356,9 @@ class GameEngine:
             asyncio.create_task(self.gun_process(gun_buffer=self.p1_gun_buffer, health_buffer=self.p1_health_buffer)),
             asyncio.create_task(self.gun_process(gun_buffer=self.p2_gun_buffer, health_buffer=self.p2_health_buffer)),
             asyncio.create_task(self.prediction_process()),
-            asyncio.create_task(self.eval_process()),
-            asyncio.create_task(self.process()),
+            #asyncio.create_task(self.eval_process()),
+            asyncio.create_task(self.process(player=1, event_buffer=self.p1_event_buffer)),
+            asyncio.create_task(self.process(player=2, event_buffer=self.p2_event_buffer)),
             asyncio.create_task(self.visualiser_state_process()),
             asyncio.create_task(self.connection_process())
         ]
