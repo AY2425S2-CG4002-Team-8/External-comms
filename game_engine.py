@@ -6,7 +6,7 @@ from packet import GunPacket, HealthPacket, PacketFactory, IMU, HEALTH, GUN, CON
 from relay_server import RelayServer
 from ai_engine import AiEngine
 from game_state import GameState, VisualiserState
-from config import ACTION_AVALANCHE, AI_READ_BUFFER_MAX_SIZE, CONNECTION_TOPIC, GUN_TIMEOUT, SECRET_KEY, HOST, MQTT_HOST, MQTT_PORT, SEND_TOPICS, READ_TOPICS, MQTT_BASE_RECONNECT_DELAY, MQTT_MAX_RECONNECT_DELAY, MQTT_MAX_RECONNECT_ATTEMPTS, RELAY_SERVER_PORT, ACTION_TOPIC, ALL_INTERFACE
+from config import AI_READ_BUFFER_MAX_SIZE, CONNECTION_TOPIC, EVENT_TIMEOUT, GUN_TIMEOUT, SECRET_KEY, HOST, MQTT_HOST, MQTT_PORT, SEND_TOPICS, READ_TOPICS, MQTT_BASE_RECONNECT_DELAY, MQTT_MAX_RECONNECT_DELAY, MQTT_MAX_RECONNECT_ATTEMPTS, RELAY_SERVER_PORT, ACTION_TOPIC, ALL_INTERFACE
 from logger import get_logger
 
 logger = get_logger(__name__)
@@ -22,6 +22,8 @@ class GameEngine:
         self.p2_visualiser_state = VisualiserState()
 
         self.game_state_lock = asyncio.Lock()
+        self.p1_event = asyncio.Event()
+        self.p2_event = asyncio.Event()
 
         self.eval_client_read_buffer = asyncio.Queue()
         self.eval_client_send_buffer = asyncio.Queue()
@@ -204,12 +206,49 @@ class GameEngine:
                 eval_data = self.generate_game_state(player, action)
                 logger.critical(f"Sending eval data for player {player} to eval_server: {eval_data}")
                 await self.eval_client_send_buffer.put(eval_data)
+                if player == 1:
+                    self.p1_event.set()
+                else:
+                    self.p2_event.set()
                 await self.send_visualiser_action(ACTION_TOPIC, player, action, hit, action_possible, snow_number)
                 
             except Exception as e:
                 logger.error(f"Exception in process: {e}")
                 raise
+    async def eval_process(self) -> None:
+        """
+        Listens to eval_client_read_buffer for eval_server updates
+        Puts updated game state into relay_server and visualiser send_buffers to update
+        """ 
+        while True:
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(
+                        self.cooldown_p1_event.wait(),
+                        self.cooldown_p2_event.wait()
+                    ),
+                    timeout=EVENT_TIMEOUT 
+                )
+                # Double await to clear both flags after both updates received
+                eval_game_state = await self.eval_client_read_buffer.get()
+                logger.critical(f"Received game state from eval_server = {eval_game_state}")
+                self.update_game_state(eval_game_state)
 
+                eval_game_state = await self.eval_client_read_buffer.get()
+                logger.critical(f"Received game state from eval_server = {eval_game_state}")
+                self.update_game_state(eval_game_state)
+                
+                # Propagate the final game state to visualiser with ignored action and hit
+                mqtt_message = self.generate_action_mqtt_message(1, None, None, None, None)
+                await self.send_relay_node()
+                await self.visualiser_send_buffer.put((ACTION_TOPIC, mqtt_message))
+                
+                # Clear events for the next round
+                self.p1_event.clear()
+                self.p2_event.clear()
+            except Exception as e:
+                logger.error(f"Error in eval_process: {e}")
+                
     async def send_visualiser_connection(self, topic: str, player: int, device: str) -> None:
         message = self.generate_connection_mqtt_message(player, device)
         logger.debug(f"Sending connection to topic {topic} on visualiser: {message}")
@@ -277,23 +316,6 @@ class GameEngine:
         await self.relay_server_send_buffer.put(p2_gun_packet.to_bytes())
         await self.relay_server_send_buffer.put(p1_health_packet.to_bytes())
         await self.relay_server_send_buffer.put(p2_health_packet.to_bytes())
-        
-    async def eval_process(self) -> None:
-        """
-        Listens to eval_client_read_buffer for eval_server updates
-        Puts updated game state into relay_server and visualiser send_buffers to update
-        """ 
-        while True:
-            try:
-                eval_game_state = await self.eval_client_read_buffer.get()
-                logger.critical(f"Received game state data from eval_server = {eval_game_state}")
-                self.update_game_state(eval_game_state)
-                # Propagate eval_server game state to visualiser with ignored action and hit
-                mqtt_message = self.generate_action_mqtt_message(1, None, None, None, None)
-                await self.send_relay_node()
-                await self.visualiser_send_buffer.put((ACTION_TOPIC, mqtt_message))
-            except Exception as e:
-                logger.error(f"Error in eval_process: {e}")
 
     def update_game_state(self, eval_game_state: str) -> None:
         eval_game_state = json.loads(eval_game_state)

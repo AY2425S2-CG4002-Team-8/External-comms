@@ -32,3 +32,6 @@ AI_READ_BUFFER_MAX_SIZE = 40
 # Action Configuration
 ACTION_AVALANCHE = "avalanche"
 GUN_TIMEOUT = 0.2
+
+# GE Configuration
+EVENT_TIMEOUT=60
