@@ -224,8 +224,8 @@ class GameEngine:
             try:
                 await asyncio.wait_for(
                     asyncio.gather(
-                        self.cooldown_p1_event.wait(),
-                        self.cooldown_p2_event.wait()
+                        self.p1_event.wait(),
+                        self.p2_event.wait()
                     ),
                     timeout=EVENT_TIMEOUT 
                 )
