@@ -47,7 +47,7 @@ class GameState:
         elif action == "reload":
             action_possible = attacker.reload()
         elif action == "bomb":
-            action_possible = attacker.bomb(opponent, fov, snow_number)
+            action_possible = attacker.bomb(opponent, fov)
         elif action in {"badminton", "golf", "fencing", "boxing"}:
             attacker.harm_AI(opponent, fov)
         else:
