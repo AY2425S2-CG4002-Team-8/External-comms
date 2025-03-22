@@ -163,6 +163,7 @@ class GameEngine:
         """
         while True:
             try:
+                player = await gun_buffer.get()
                 logger.critical(f"Attempted to shoot")
                 try:
                     await asyncio.wait_for(health_buffer.get(), timeout=GUN_TIMEOUT)
@@ -353,8 +354,8 @@ class GameEngine:
             asyncio.create_task(self.initiate_relay_server()),
             asyncio.create_task(self.initiate_ai_engine()),
             asyncio.create_task(self.relay_process()),
-            asyncio.create_task(self.gun_process(gun_buffer=self.p1_gun_buffer, health_buffer=self.p1_health_buffer)),
-            asyncio.create_task(self.gun_process(gun_buffer=self.p2_gun_buffer, health_buffer=self.p2_health_buffer)),
+            asyncio.create_task(self.gun_process(gun_buffer=self.p1_gun_buffer, health_buffer=self.p1_health_buffer, event_buffer=self.p1_event_buffer)),
+            asyncio.create_task(self.gun_process(gun_buffer=self.p2_gun_buffer, health_buffer=self.p2_health_buffer, event_buffer=self.p2_event_buffer)),
             asyncio.create_task(self.prediction_process()),
             #asyncio.create_task(self.eval_process()),
             asyncio.create_task(self.process(player=1, event_buffer=self.p1_event_buffer)),
