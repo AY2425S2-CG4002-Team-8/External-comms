@@ -227,7 +227,7 @@ class AiEngine:
                     logger.warning(f"{packets} packets received. Skipping prediction")
                     continue
                 
-                await self.send_visualiser_cooldown(COOLDOWN_TOPIC, 1, False)
+                await self.send_visualiser_cooldown(COOLDOWN_TOPIC, player, False)
                 df = pd.DataFrame([bufs])
 
                 predicted_data = await asyncio.to_thread(self.classify, df, player)
@@ -236,7 +236,7 @@ class AiEngine:
 
                 await self.write_buffer.put((player, predicted_data))
                 await asyncio.sleep(3)
-                await self.send_visualiser_cooldown(COOLDOWN_TOPIC, 1, True)
+                await self.send_visualiser_cooldown(COOLDOWN_TOPIC, player, True)
 
         except Exception as e:
             logger.error(f"Error occurred in the AI Engine: {e}")

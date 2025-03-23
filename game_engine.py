@@ -194,13 +194,18 @@ class GameEngine:
                 # event_buffer: (player: int, action: str)
                 player, action = await self.event_buffer.get()
                 logger.critical(f"action: {action}")
+
                 if action == "shoot" or action == "walk":
                     logger.critical(f"Dropping action: {action}")
                     continue
 
-                fov, snow_number = self.p1_visualiser_state.get_fov(), self.p1_visualiser_state.get_snow_number()
+                visualiser_state = self.p1_visualiser_state if player == 1 else self.p2_visualiser_state
+                fov, snow_number = visualiser_state.get_fov(), visualiser_state.get_snow_number()
+
                 hit, action_possible = self.game_state.perform_action(action, player, fov, snow_number)
+
                 action = "gun" if action == "miss" else action
+
                 # Prepare for eval_server
                 eval_data = self.generate_game_state(player, action)
                 logger.critical(f"Sending eval data for player {player} to eval_server: {eval_data}")
