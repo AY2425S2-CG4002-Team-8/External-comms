@@ -193,13 +193,11 @@ class AiEngine:
         AI inference is against hardcoded dummy IMU data
         """
         log = logger.ai_p1 if player == 1 else logger.ai_p2
-        bufs = {}
         try:
             while True:
                 await self.clear_queue(read_buffer)
                 packets = 0
-                for col in self.COLUMNS:
-                    bufs[col] = []
+                bufs = {col: [] for col in self.COLUMNS}
 
                 log("AI Engine: Starting to collect data for prediction")
                 for i in range(self.MAX_PREDICTION_DATA_POINTS):
