@@ -192,7 +192,7 @@ class AiEngine:
         Collects self.PREDICTION_DATA_POINTS packets to form a dictionary of arrays (current implementation) for AI inference
         AI inference is against hardcoded dummy IMU data
         """
-
+        log = logger.ai_p1 if player == 1 else logger.ai_p2
         try:
             while True:
                 await self.clear_queue(read_buffer)
@@ -200,7 +200,7 @@ class AiEngine:
                 for col in self.COLUMNS:
                     bufs[col] = []
 
-                logger.warning("AI Engine: Starting to collect data for prediction")
+                log("AI Engine: Starting to collect data for prediction")
                 for i in range(self.MAX_PREDICTION_DATA_POINTS):
                     try:
                         packet = await asyncio.wait_for(read_buffer.get(), timeout=self.PACKET_TIMEOUT)
@@ -217,14 +217,14 @@ class AiEngine:
                         bufs['glove_gy'].append(packet.glove_gy)
                         bufs['glove_gz'].append(packet.glove_gz)
                         packets += 1
-                        logger.warning(f"IMU packet Received on AI: {i+1}")
+                        log(f"IMU packet Received on AI: {i+1}")
 
                     except asyncio.TimeoutError:
                         break
 
                 # If data buffer is < threshold, we skip processing and continue to the next iteration
                 if packets < 10:
-                    logger.warning(f"{packets} packets received. Skipping prediction")
+                    log(f"{packets} packets received. Skipping prediction")
                     continue
                 
                 await self.send_visualiser_cooldown(COOLDOWN_TOPIC, player, False)
@@ -232,7 +232,7 @@ class AiEngine:
 
                 predicted_data = await asyncio.to_thread(self.classify, df, player)
                 predicted_data = "bomb" if predicted_data == "snowbomb" else predicted_data
-                logger.warning(f"AI Engine Prediction: {predicted_data}")
+                log(f"AI Engine Prediction: {predicted_data}")
 
                 await self.write_buffer.put((player, predicted_data))
                 await asyncio.sleep(3)
