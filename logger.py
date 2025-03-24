@@ -1,6 +1,25 @@
 import logging
 from colorlog import ColoredFormatter
 
+# Define custom log levels
+AI_P1_LEVEL = 25  # Between WARNING (30) and INFO (20)
+AI_P2_LEVEL = 26  # Slightly higher than AI_P1
+
+logging.addLevelName(AI_P1_LEVEL, "AI_P1")
+logging.addLevelName(AI_P2_LEVEL, "AI_P2")
+
+def ai_p1(self, message, *args, **kwargs):
+    if self.isEnabledFor(AI_P1_LEVEL):
+        self._log(AI_P1_LEVEL, message, args, **kwargs)
+
+def ai_p2(self, message, *args, **kwargs):
+    if self.isEnabledFor(AI_P2_LEVEL):
+        self._log(AI_P2_LEVEL, message, args, **kwargs)
+
+logging.Logger.ai_p1 = ai_p1
+logging.Logger.ai_p2 = ai_p2
+
+
 def get_logger(name: str) -> logging.Logger:
     logger = logging.getLogger(name)
     logger.setLevel(logging.DEBUG)
@@ -20,6 +39,8 @@ def get_logger(name: str) -> logging.Logger:
                 'WARNING': 'light_red',
                 'ERROR': 'red',
                 'CRITICAL': 'white',
+                'AI_P1': 'cyan',
+                'AI_P2': 'magenta',
             }
         )
         handler.setFormatter(formatter)
