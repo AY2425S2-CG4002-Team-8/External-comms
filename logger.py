@@ -40,7 +40,7 @@ def get_logger(name: str) -> logging.Logger:
                 'ERROR': 'red',
                 'CRITICAL': 'white',
                 'AI_P1': 'cyan',
-                'AI_P2': 'magenta',
+                'AI_P2': 'purple',
             }
         )
         handler.setFormatter(formatter)
