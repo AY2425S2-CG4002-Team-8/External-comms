@@ -104,10 +104,11 @@ class GameEngine:
                 await self.p2_health_buffer.put(player)
         elif packet.type == GUN:
             logger.info(f"GUN PACKET Received")
-            if player == 1:
-                await self.p1_gun_buffer.put(player)
-            else:
-                await self.p2_gun_buffer.put(player)
+            # if player == 1:
+            #     await self.p1_gun_buffer.put(player)
+            # else:
+            #     await self.p2_gun_buffer.put(player)
+            await self.event_buffer.put((player, "gun"))
         elif packet.type == IMU:
             logger.info(f"IMU PACKET Received")
             if player == 1:
@@ -153,25 +154,25 @@ class GameEngine:
             except Exception as e:
                 logger.error(f"Error in connection_process: {e}")
     
-    async def gun_process(self, gun_buffer: asyncio.Queue, health_buffer: asyncio.Queue) -> None:
-        """
-        When gun packet is received, wait for health packet with timeout
-        If health packet received before timeout, IR registered , and puts in central event buffer. Else, shot missed
-        """
-        while True:
-            try:
-                player = await gun_buffer.get()
-                logger.critical(f"Attempted to shoot")
-                try:
-                    await asyncio.wait_for(health_buffer.get(), timeout=GUN_TIMEOUT)
-                    logger.critical("Hit - Received health packet")
-                    await self.event_buffer.put((player, "gun"))
-                    logger.critical("Added gun to action buffer")
-                except asyncio.TimeoutError:
-                    await self.event_buffer.put((player, "miss"))
-                    logger.critical(f"Missed - No Health Packet Received")
-            except Exception as e:
-                logger.error(f"Error in handle_gun: {e}")
+    # async def gun_process(self, gun_buffer: asyncio.Queue, health_buffer: asyncio.Queue) -> None:
+    #     """
+    #     When gun packet is received, wait for health packet with timeout
+    #     If health packet received before timeout, IR registered , and puts in central event buffer. Else, shot missed
+    #     """
+    #     while True:
+    #         try:
+    #             player = await gun_buffer.get()
+    #             logger.critical(f"Attempted to shoot")
+    #             try:
+    #                 await asyncio.wait_for(health_buffer.get(), timeout=GUN_TIMEOUT)
+    #                 logger.critical("Hit - Received health packet")
+    #                 await self.event_buffer.put((player, "gun"))
+    #                 logger.critical("Added gun to action buffer")
+    #             except asyncio.TimeoutError:
+    #                 await self.event_buffer.put((player, "miss"))
+    #                 logger.critical(f"Missed - No Health Packet Received")
+    #         except Exception as e:
+    #             logger.error(f"Error in handle_gun: {e}")
                 
     async def prediction_process(self) -> None:
         """
@@ -369,8 +370,8 @@ class GameEngine:
             asyncio.create_task(self.initiate_relay_server()),
             asyncio.create_task(self.initiate_ai_engine()),
             asyncio.create_task(self.relay_process()),
-            asyncio.create_task(self.gun_process(gun_buffer=self.p1_gun_buffer, health_buffer=self.p1_health_buffer)),
-            asyncio.create_task(self.gun_process(gun_buffer=self.p2_gun_buffer, health_buffer=self.p2_health_buffer)),
+            # asyncio.create_task(self.gun_process(gun_buffer=self.p1_gun_buffer, health_buffer=self.p1_health_buffer)),
+            # asyncio.create_task(self.gun_process(gun_buffer=self.p2_gun_buffer, health_buffer=self.p2_health_buffer)),
             asyncio.create_task(self.prediction_process()),
             asyncio.create_task(self.eval_process()),
             asyncio.create_task(self.process()),
