@@ -19,7 +19,7 @@ class AiEngine:
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Engine Init~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#   
 
-    def __init__(self, p1_read_buffer: asyncio.Queue, p2_read_buffer: asyncio.Queue, write_buffer: asyncio.Queue, visualiser_send_buffer: asyncio.Queue, game_engine_event: asyncio.Event):
+    def __init__(self, p1_read_buffer: asyncio.Queue, p2_read_buffer: asyncio.Queue, write_buffer: asyncio.Queue, visualiser_send_buffer: asyncio.Queue):
         PL.reset()
         self.MAX_PREDICTION_DATA_POINTS = 30 # Actual:30
         self.FEATURE_SIZE = 12
@@ -28,7 +28,6 @@ class AiEngine:
         self.p1_read_buffer = p1_read_buffer
         self.p2_read_buffer = p2_read_buffer
         self.write_buffer = write_buffer
-        self.game_engine_event = game_engine_event
         self.visualiser_send_buffer = visualiser_send_buffer
 
         self.COLUMNS = ['gun_ax', 'gun_ay', 'gun_az', 'gun_gx', 'gun_gy', 'gun_gz', 'glove_ax', 'glove_ay', 'glove_az', 'glove_gx', 'glove_gy', 'glove_gz']
@@ -193,15 +192,14 @@ class AiEngine:
         Collects self.PREDICTION_DATA_POINTS packets to form a dictionary of arrays (current implementation) for AI inference
         AI inference is against hardcoded dummy IMU data
         """
-
+        log = logger.ai_p1 if player == 1 else logger.ai_p2
         try:
             while True:
                 await self.clear_queue(read_buffer)
-                bufs, packets = {}, 0
-                for col in self.COLUMNS:
-                    bufs[col] = []
+                packets = 0
+                bufs = {col: [] for col in self.COLUMNS}
 
-                logger.warning("AI Engine: Starting to collect data for prediction")
+                log("AI Engine: Starting to collect data for prediction")
                 for i in range(self.MAX_PREDICTION_DATA_POINTS):
                     try:
                         packet = await asyncio.wait_for(read_buffer.get(), timeout=self.PACKET_TIMEOUT)
@@ -218,26 +216,26 @@ class AiEngine:
                         bufs['glove_gy'].append(packet.glove_gy)
                         bufs['glove_gz'].append(packet.glove_gz)
                         packets += 1
-                        logger.warning(f"IMU packet Received on AI: {i+1}")
+                        log(f"IMU packet Received on AI: {i+1}")
 
                     except asyncio.TimeoutError:
                         break
 
                 # If data buffer is < threshold, we skip processing and continue to the next iteration
                 if packets < 10:
-                    logger.warning(f"{packets} packets received. Skipping prediction")
+                    log(f"{packets} packets received. Skipping prediction")
                     continue
                 
-                await self.send_visualiser_cooldown(COOLDOWN_TOPIC, 1, False)
+                await self.send_visualiser_cooldown(COOLDOWN_TOPIC, player, False)
                 df = pd.DataFrame([bufs])
 
                 predicted_data = await asyncio.to_thread(self.classify, df, player)
                 predicted_data = "bomb" if predicted_data == "snowbomb" else predicted_data
-                logger.warning(f"AI Engine Prediction: {predicted_data}")
+                log(f"AI Engine Prediction: {predicted_data}")
 
                 await self.write_buffer.put((player, predicted_data))
                 await asyncio.sleep(3)
-                await self.send_visualiser_cooldown(COOLDOWN_TOPIC, 1, True)
+                await self.send_visualiser_cooldown(COOLDOWN_TOPIC, player, True)
 
         except Exception as e:
             logger.error(f"Error occurred in the AI Engine: {e}")
