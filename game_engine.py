@@ -217,7 +217,7 @@ class GameEngine:
 
                 # Prepare for eval_server
                 eval_data = self.generate_game_state(player, action)
-                log(f"Sending eval data for player {player} to eval_server: {eval_data}")
+                log(f"Sending eval data for player {player} with FOV: {hit}, ACTION_POSSIBLE: {action_possible} and SNOW_NUMBER: {snow_number} to eval_server: {eval_data}")
                 await self.eval_client_send_buffer.put(eval_data)
 
                 event.set()
