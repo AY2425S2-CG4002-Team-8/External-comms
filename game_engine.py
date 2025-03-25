@@ -41,6 +41,9 @@ class GameEngine:
         self.p2_health_buffer = asyncio.Queue()
         self.event_buffer = asyncio.Queue()
 
+        self.p1_logger = logger.ge_p1
+        self.p2_logger = logger.ge_p2
+
         self.tasks = []
 
     async def initiate_mqtt(self):
@@ -194,10 +197,15 @@ class GameEngine:
             try:
                 # event_buffer: (player: int, action: str)
                 player, action = await self.event_buffer.get()
-                logger.critical(f"action: {action}")
+                event, log = None, None
+                if player == 1:
+                    event, log = self.p1_event, self.p1_logger
+                else:
+                    event, log = self.p2_event, self.p2_logger
+                log(f"action: {action}")
 
                 if action == "shoot" or action == "walk":
-                    logger.critical(f"Dropping action: {action}")
+                    log(f"Dropping action: {action}")
                     continue
 
                 visualiser_state = self.p1_visualiser_state if player == 1 else self.p2_visualiser_state
@@ -209,12 +217,10 @@ class GameEngine:
 
                 # Prepare for eval_server
                 eval_data = self.generate_game_state(player, action)
-                logger.critical(f"Sending eval data for player {player} to eval_server: {eval_data}")
+                log(f"Sending eval data for player {player} to eval_server: {eval_data}")
                 await self.eval_client_send_buffer.put(eval_data)
-                if player == 1:
-                    self.p1_event.set()
-                else:
-                    self.p2_event.set()
+
+                event.set()
                 await self.send_visualiser_action(ACTION_TOPIC, player, action, hit, action_possible, snow_number)
                 
             except Exception as e:
@@ -251,6 +257,9 @@ class GameEngine:
                 # Clear events for the next round
                 self.p1_event.clear()
                 self.p2_event.clear()
+
+            except asyncio.TimeoutError:
+                logger.error("Timeout while waiting for eval_server data, continuing...")
             except Exception as e:
                 logger.error(f"Error in eval_process: {e}")
                 

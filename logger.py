@@ -4,9 +4,14 @@ from colorlog import ColoredFormatter
 # Define custom log levels
 AI_P1_LEVEL = 25  # Between WARNING (30) and INFO (20)
 AI_P2_LEVEL = 26  # Slightly higher than AI_P1
+GE_P1_LEVEL = 27
+GE_P2_LEVEL = 28
+
 
 logging.addLevelName(AI_P1_LEVEL, "AI_P1")
 logging.addLevelName(AI_P2_LEVEL, "AI_P2")
+logging.addLevelName(GE_P1_LEVEL, "GE_P1")
+logging.addLevelName(GE_P2_LEVEL, "GE_P2")
 
 def ai_p1(self, message, *args, **kwargs):
     if self.isEnabledFor(AI_P1_LEVEL):
@@ -16,8 +21,18 @@ def ai_p2(self, message, *args, **kwargs):
     if self.isEnabledFor(AI_P2_LEVEL):
         self._log(AI_P2_LEVEL, message, args, **kwargs)
 
+def ge_p1(self, message, *args, **kwargs):
+    if self.isEnabledFor(GE_P1_LEVEL):
+        self._log(GE_P1_LEVEL, message, args, **kwargs)
+
+def ge_p2(self, message, *args, **kwargs):
+    if self.isEnabledFor(GE_P2_LEVEL):
+        self._log(GE_P2_LEVEL, message, args, **kwargs)
+
 logging.Logger.ai_p1 = ai_p1
 logging.Logger.ai_p2 = ai_p2
+logging.Logger.ge_p1 = ge_p1
+logging.Logger.ge_p2 = ge_p2
 
 
 def get_logger(name: str) -> logging.Logger:
@@ -41,6 +56,8 @@ def get_logger(name: str) -> logging.Logger:
                 'CRITICAL': 'white',
                 'AI_P1': 'cyan',
                 'AI_P2': 'purple',
+                'GE_P1': 'light_cyan',
+                'GE_P2': 'light_purple'
             }
         )
         handler.setFormatter(formatter)
