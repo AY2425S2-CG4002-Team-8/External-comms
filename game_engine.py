@@ -204,7 +204,7 @@ class GameEngine:
                     event, log = self.p2_event, self.p2_logger
                 log(f"action: {action}")
 
-                if action == "shoot" or action == "walk":
+                if event.is_set() or action == "shoot" or action == "walk":
                     log(f"Dropping action: {action}")
                     continue
 
