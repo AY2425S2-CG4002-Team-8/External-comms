@@ -1,7 +1,7 @@
 import asyncio
 from datetime import datetime
 import json
-from config import COOLDOWN_TOPIC
+from config import AI_ROUND_TIMEOUT, COOLDOWN_TOPIC
 from pynq import Overlay, allocate, PL, Clocks
 import pynq.ps
 from logger import get_logger
@@ -236,7 +236,7 @@ class AiEngine:
                 log(f"AI Engine Prediction: {predicted_data}")
 
                 await self.write_buffer.put((player, predicted_data))
-                await asyncio.sleep(3)
+                await asyncio.sleep(AI_ROUND_TIMEOUT)
                 await self.send_visualiser_cooldown(COOLDOWN_TOPIC, player, True)
 
         except Exception as e:
