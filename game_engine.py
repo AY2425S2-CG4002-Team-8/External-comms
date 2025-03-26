@@ -32,8 +32,8 @@ class GameEngine:
         self.visualiser_send_buffer = asyncio.Queue()
         self.relay_server_read_buffer = asyncio.Queue()
         self.relay_server_send_buffer = asyncio.Queue()
-        self.p1_ai_engine_read_buffer = asyncio.Queue(maxsize=AI_READ_BUFFER_MAX_SIZE)
-        self.p2_ai_engine_read_buffer = asyncio.Queue(maxsize=AI_READ_BUFFER_MAX_SIZE)
+        self.p1_ai_engine_read_buffer = asyncio.Queue()
+        self.p2_ai_engine_read_buffer = asyncio.Queue()
         self.ai_engine_write_buffer = asyncio.Queue()
         self.connection_buffer = asyncio.Queue()
         self.p1_gun_buffer = asyncio.Queue()
@@ -189,7 +189,7 @@ class GameEngine:
             except Exception as e:
                 logger.error(f"Error in prediction process: {e}")
     
-    def is_invalid_state(self, event: asyncio.Event, action: str, perceived_game_round: int) -> bool:
+    def is_invalid(self, event: asyncio.Event, action: str, perceived_game_round: int) -> bool:
         if event.is_set() or (perceived_game_round < 22 and action == "logout"):
             return True
         return action in ["shoot", "walk"]
@@ -204,9 +204,9 @@ class GameEngine:
                 # event_buffer: (player: int, action: str)
                 player, action = await self.event_buffer.get()
                 event, log = self.p1_event if player == 1 else self.p2_event, self.p1_logger if player == 1 else self.p2_logger
-                log(f"action: {action}")
+                log(f"round: {self.perceived_game_round}, action: {action}")
 
-                if self.is_invalid_action(action):
+                if self.is_invalid(event=event, action=action, perceived_game_round=self.perceived_game_round):
                     log(f"Dropping action: {action} in round {self.perceived_game_round}")
                     continue
 
