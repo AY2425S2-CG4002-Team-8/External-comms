@@ -21,7 +21,7 @@ class AiEngine:
 
     def __init__(self, p1_read_buffer: asyncio.Queue, p2_read_buffer: asyncio.Queue, write_buffer: asyncio.Queue, visualiser_send_buffer: asyncio.Queue):
         PL.reset()
-        self.MAX_PREDICTION_DATA_POINTS = 30 # Actual:30
+        self.MAX_PREDICTION_DATA_POINTS = 35 
         self.FEATURE_SIZE = 12
         self.PACKET_TIMEOUT = 0.2
 
@@ -31,10 +31,10 @@ class AiEngine:
         self.visualiser_send_buffer = visualiser_send_buffer
 
         self.COLUMNS = ['gun_ax', 'gun_ay', 'gun_az', 'gun_gx', 'gun_gy', 'gun_gz', 'glove_ax', 'glove_ay', 'glove_az', 'glove_gx', 'glove_gy', 'glove_gz']
-        self.bitstream_path = "/home/xilinx/capstone/FPGA-AI/off_mlp_comb_nofreq_trim30_dual.bit"
-        self.input_size = 108 # Actual:300
-        self.output_size = 10  # Actual:9
-        self.scaler_path = "/home/xilinx/capstone/FPGA-AI/robust_scaler_aug_nofreq_trim30.save"
+        self.bitstream_path = "/home/xilinx/capstone/FPGA-AI/mlp_trim35.bit"
+        self.input_size = 132 
+        self.output_size = 10  
+        self.scaler_path = "/home/xilinx/capstone/FPGA-AI/robust_scaler_mlp_trim35.save"
         self.scaler = joblib.load(self.scaler_path)
         self.classes = '/home/xilinx/capstone/FPGA-AI/classes_comb.npy'
         self.label_encoder = LabelEncoder()
@@ -79,10 +79,12 @@ class AiEngine:
         time_series_set = df.iloc[0,:]
         row_df = pd.DataFrame()
         for col in cols:
-            cell_cols = [f'{col}_mean', f'{col}_max', f'{col}_min', f'{col}_range', f'{col}_iqr', f'{col}_skew', f'{col}_kurt', f'{col}_std', f'{col}_median']
+            cell_cols = [f'{col}_sem', f'{col}_mean', f'{col}_rank', f'{col}_max', f'{col}_min', f'{col}_range', f'{col}_iqr', f'{col}_skew', f'{col}_kurt', f'{col}_std', f'{col}_median']
             cell_df = pd.DataFrame(columns=cell_cols)
-            time_series = pd.DataFrame(time_series_set[col])
+            time_series =  pd.DataFrame(time_series_set[col])
             cell_df[f'{col}_mean'] = time_series.mean()
+            cell_df[f'{col}_sem'] = time_series.sem()
+            cell_df[f'{col}_rank'] = time_series.rank()
             cell_df[f'{col}_max'] = time_series.max()
             cell_df[f'{col}_min'] = time_series.min()
             cell_df[f'{col}_range'] = cell_df[f'{col}_max'] - cell_df[f'{col}_min']
