@@ -206,7 +206,7 @@ class GameEngine:
                 event, log = self.p1_event if player == 1 else self.p2_event, self.p1_logger if player == 1 else self.p2_logger
                 log(f"round: {self.perceived_game_round}, action: {action}")
 
-                if self.is_invalid(action):
+                if self.is_invalid(event=event, action=action, perceived_game_round=self.perceived_game_round):
                     log(f"Dropping action: {action} in round {self.perceived_game_round}")
                     continue
 
