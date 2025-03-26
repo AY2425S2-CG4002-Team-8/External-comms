@@ -20,6 +20,7 @@ class GameEngine:
         self.game_state = GameState()
         self.p1_visualiser_state = VisualiserState()
         self.p2_visualiser_state = VisualiserState()
+        self.perceived_game_round = 1
 
         self.game_state_lock = asyncio.Lock()
         self.p1_event = asyncio.Event()
@@ -188,6 +189,11 @@ class GameEngine:
             except Exception as e:
                 logger.error(f"Error in prediction process: {e}")
     
+    def is_invalid_state(self, event: asyncio.Event, action: str, perceived_game_round: int) -> bool:
+        if event.is_set() or (perceived_game_round < 22 and action == "logout"):
+            return True
+        return action in ["shoot", "walk"]
+    
     async def process(self) -> None:
         """
         Sends action (gun or AI) to visualiser, followed by the avalanche damage if any.
@@ -197,15 +203,11 @@ class GameEngine:
             try:
                 # event_buffer: (player: int, action: str)
                 player, action = await self.event_buffer.get()
-                event, log = None, None
-                if player == 1:
-                    event, log = self.p1_event, self.p1_logger
-                else:
-                    event, log = self.p2_event, self.p2_logger
+                event, log = self.p1_event if player == 1 else self.p2_event, self.p1_logger if player == 1 else self.p2_logger
                 log(f"action: {action}")
 
-                if event.is_set() or action == "shoot" or action == "walk":
-                    log(f"Dropping action: {action}")
+                if self.is_invalid_action(action):
+                    log(f"Dropping action: {action} in round {self.perceived_game_round}")
                     continue
 
                 visualiser_state = self.p1_visualiser_state if player == 1 else self.p2_visualiser_state
@@ -257,6 +259,7 @@ class GameEngine:
                 # Clear events for the next round
                 self.p1_event.clear()
                 self.p2_event.clear()
+                self.perceived_game_round += 1
 
             except asyncio.TimeoutError:
                 logger.error("Timeout while waiting for eval_server data, continuing...")
