@@ -53,7 +53,7 @@ def handler(channel, sock):
     sock.close()
 
 
-def run_game_engine(client, remote_port):
+def run_game_engine(client, remote_port: int, local_port: int):
     print(f"Running game server on Ultra96 using port {remote_port}...")
 
     try:
@@ -77,19 +77,23 @@ def run_game_engine(client, remote_port):
         stdin.flush()
 
         # Start threads to read stdout and stderr
-        threading.Thread(target=read_stream, args=(stdout, "STDOUT")).start()
-        threading.Thread(target=read_stream, args=(stderr, "STDERR")).start()
+        threading.Thread(target=read_stream, args=(stdout, "STDOUT", local_port)).start()
+        threading.Thread(target=read_stream, args=(stderr, "STDERR", local_port)).start()
 
     except Exception as e:
         print(f"Failed to run the game server on Ultra96: {e}")
 
 
-def read_stream(stream, stream_name):
-    for line in iter(lambda: stream.readline(2048), ""):
-        if line:
-            print(f"[REMOTE {stream_name}] {line}", end='')
-        else:
-            break
+def read_stream(stream, stream_name, local_port: int):
+    with open(f"ge_{local_port}.log", "a") as log_file:
+        for line in iter(lambda: stream.readline(2048), ""):
+            if line:
+                entry = f"[REMOTE {stream_name}] {line.strip()}"
+                print(entry)
+                log_file.write(entry + "\n")
+                log_file.flush()
+            else:
+                break
 
 
 def main(local_port: int):
@@ -116,7 +120,7 @@ def main(local_port: int):
         reverse_tunnel_thread.start()
 
         # Run the game server on the remote host
-        run_game_engine(client, remote_port)
+        run_game_engine(client, remote_port, local_port)
 
         def signal_handler(sig, frame):
             print("Shutting down...")

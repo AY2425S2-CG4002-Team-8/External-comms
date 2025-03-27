@@ -290,6 +290,7 @@ class GameEngine:
         connection_payload = {
             'player': player,
             'device': device,
+            'ge_sight': self.p1_visualiser_state.get_fov() if player == 1 else self.p2_visualiser_state.get_fov(),
         }
 
         return json.dumps(connection_payload)
