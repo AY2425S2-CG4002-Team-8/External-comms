@@ -32,8 +32,8 @@ class GameEngine:
         self.visualiser_send_buffer = asyncio.Queue()
         self.relay_server_read_buffer = asyncio.Queue()
         self.relay_server_send_buffer = asyncio.Queue()
-        self.p1_ai_engine_read_buffer = asyncio.Queue()
-        self.p2_ai_engine_read_buffer = asyncio.Queue()
+        self.p1_ai_engine_read_buffer = asyncio.Queue(AI_READ_BUFFER_MAX_SIZE)
+        self.p2_ai_engine_read_buffer = asyncio.Queue(AI_READ_BUFFER_MAX_SIZE)
         self.ai_engine_write_buffer = asyncio.Queue()
         self.connection_buffer = asyncio.Queue()
         self.p1_gun_buffer = asyncio.Queue()
@@ -99,31 +99,41 @@ class GameEngine:
 
     async def handle_packet(self, packet) -> None:
         """Handles different packet types and places actions into the appropriate queues."""
-        player = packet.player
-        if packet.type == HEALTH:
-            logger.info(f"HEALTH PACKET Received")
-            if player == 1:
-                await self.p1_health_buffer.put(player)
+        try:
+            player = packet.player
+            if packet.type == HEALTH:
+                logger.info(f"HEALTH PACKET Received")
+                if player == 1:
+                    await self.p1_health_buffer.put(player)
+                else:
+                    await self.p2_health_buffer.put(player)
+            elif packet.type == GUN:
+                logger.info(f"GUN PACKET Received")
+                # if player == 1:
+                #     await self.p1_gun_buffer.put(player)
+                # else:
+                #     await self.p2_gun_buffer.put(player)
+                await self.event_buffer.put((player, "gun"))
+            elif packet.type == IMU:
+                logger.info(f"IMU PACKET Received")
+                # if player == 1:
+                #     await self.p1_ai_engine_read_buffer.put(packet)
+                # else:
+                #     await self.p2_ai_engine_read_buffer.put(packet)
+                try:
+                    if player == 1:
+                        await self.p1_ai_engine_read_buffer.put_nowait(packet)
+                    else:
+                        await self.p2_ai_engine_read_buffer.put_nowait(packet)
+                except asyncio.QueueFull:
+                    logger.warning(f"AI buffer full, dropping IMU packet for player {player}")
+            elif packet.type == CONN:
+                logger.info(f"CONNECTION PACKET Received")
+                await self.connection_buffer.put(packet)
             else:
-                await self.p2_health_buffer.put(player)
-        elif packet.type == GUN:
-            logger.info(f"GUN PACKET Received")
-            # if player == 1:
-            #     await self.p1_gun_buffer.put(player)
-            # else:
-            #     await self.p2_gun_buffer.put(player)
-            await self.event_buffer.put((player, "gun"))
-        elif packet.type == IMU:
-            logger.info(f"IMU PACKET Received")
-            if player == 1:
-                await self.p1_ai_engine_read_buffer.put(packet)
-            else:
-                await self.p2_ai_engine_read_buffer.put(packet)
-        elif packet.type == CONN:
-            logger.info(f"CONNECTION PACKET Received")
-            await self.connection_buffer.put(packet)
-        else:
-            logger.info(f"Invalid packet type received: {packet.type}")
+                logger.info(f"Invalid packet type received: {packet.type}")
+        except Exception as e:
+            logger.error(f"Error in handle_packet: {e}")
 
     async def relay_process(self) -> None:
         """
