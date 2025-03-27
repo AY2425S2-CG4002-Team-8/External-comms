@@ -122,9 +122,9 @@ class GameEngine:
                 #     await self.p2_ai_engine_read_buffer.put(packet)
                 try:
                     if player == 1:
-                        await self.p1_ai_engine_read_buffer.put_nowait(packet)
+                        self.p1_ai_engine_read_buffer.put_nowait(packet)
                     else:
-                        await self.p2_ai_engine_read_buffer.put_nowait(packet)
+                        self.p2_ai_engine_read_buffer.put_nowait(packet)
                 except asyncio.QueueFull:
                     logger.warning(f"AI buffer full, dropping IMU packet for player {player}")
             elif packet.type == CONN:
