@@ -238,6 +238,12 @@ class GameEngine:
             except Exception as e:
                 logger.error(f"Exception in process: {e}")
                 raise
+
+    def next_round(self) -> None:
+        self.p1_event.clear()
+        self.p2_event.clear()
+        self.perceived_game_round += 1
+
     async def eval_process(self) -> None:
         """
         Listens to eval_client_read_buffer for eval_server updates
@@ -253,11 +259,15 @@ class GameEngine:
                     timeout=EVENT_TIMEOUT 
                 )
                 # Double await to clear both flags after both updates received
-                eval_game_state = await self.eval_client_read_buffer.get()
+                eval_game_state = self.eval_client_read_buffer.get_nowait()
+                if eval_game_state is None:
+                    continue
                 logger.critical(f"Received game state from eval_server = {eval_game_state}")
                 self.update_game_state(eval_game_state)
 
-                eval_game_state = await self.eval_client_read_buffer.get()
+                eval_game_state = self.eval_client_read_buffer.get_nowait()
+                if eval_game_state is None:
+                    continue
                 logger.critical(f"Received game state from eval_server = {eval_game_state}")
                 self.update_game_state(eval_game_state)
                 
@@ -267,10 +277,11 @@ class GameEngine:
                 await self.visualiser_send_buffer.put((ACTION_TOPIC, mqtt_message))
                 
                 # Clear events for the next round
-                self.p1_event.clear()
-                self.p2_event.clear()
-                self.perceived_game_round += 1
+                self.next_round()
 
+            except asyncio.QueueEmpty:
+                logger.error("Eval_client_buffer is empty, continuing")
+                self.next_round()
             except asyncio.TimeoutError:
                 logger.error("Timeout while waiting for eval_server data, continuing...")
             except Exception as e:
@@ -294,10 +305,11 @@ class GameEngine:
 
         return json.dumps(connection_payload)
     
-    def generate_ge_sight_mqtt_message(self, player: int, ge_sight: bool) -> json:
+    def generate_ge_sight_mqtt_message(self, player: int, ge_sight: bool, ge_avalanche: int) -> json:
         ge_sight_payload = {
             'player': player,
             'ge_sight': ge_sight,
+            'ge_avalanche': ge_avalanche
         }
 
         return json.dumps(ge_sight_payload)
@@ -371,28 +383,26 @@ class GameEngine:
 
     async def visualiser_state_process(self) -> None:
         for player in [1, 2]:
-            fov = self.p1_visualiser_state.get_fov() if player == 1 else self.p2_visualiser_state.get_fov()
-            await self.visualiser_send_buffer.put((GE_SIGHT_TOPIC, self.generate_ge_sight_mqtt_message(player, fov)))
-            
+            ge_sight = self.p1_visualiser_state.get_fov() if player == 1 else self.p2_visualiser_state.get_fov()
+            ge_avalanche = self.p1_visualiser_state.get_snow_number() if player == 1 else self.p2_visualiser_state.get_snow_number()
+            await self.visualiser_send_buffer.put((GE_SIGHT_TOPIC, self.generate_ge_sight_mqtt_message(player, ge_sight, ge_avalanche)))
+
         while True:
             try:
                 # Can consider 2 topics for p1, p2 to avoid congestion
                 sight_payload = await self.visualiser_read_buffer.get()
                 sight_payload = json.loads(sight_payload)
                 player, fov, snow_number = sight_payload['player'], sight_payload['in_sight'], sight_payload['avalanche']
+                visualiser_state = self.p1_visualiser_state if player == 1 else self.p2_visualiser_state
                 current_ge_sight = self.p1_visualiser_state.get_fov() if player == 1 else self.p2_visualiser_state.get_fov()
+                current_ge_avalanche = self.p1_visualiser_state.get_snow_number() if player == 1 else self.p2_visualiser_state.get_snow_number()
 
-                if player == 1:
-                    self.p1_visualiser_state.set_fov(fov)
-                    self.p1_visualiser_state.set_snow_number(snow_number)
-                    logger.debug(f"Updated p1 visualiser state: {self.p1_visualiser_state.get_fov()}, {self.p1_visualiser_state.get_snow_number()}")
-                else:
-                    self.p2_visualiser_state.set_fov(fov)
-                    self.p2_visualiser_state.set_snow_number(snow_number)
-                    logger.debug(f"Updated p2 visualiser state: {self.p2_visualiser_state.get_fov()}, {self.p2_visualiser_state.get_snow_number()}")
+                visualiser_state.set_fov(fov)
+                visualiser_state.set_snow_number(snow_number)
+                logger.debug(f"Updated player {player} visualiser state: {self.visualiser_state.get_fov()}, {self.visualiser_state.get_snow_number()}")
 
-                if current_ge_sight != fov:
-                    await self.visualiser_send_buffer.put((GE_SIGHT_TOPIC, self.generate_ge_sight_mqtt_message(player, fov)))
+                if current_ge_sight != fov or current_ge_avalanche != snow_number:
+                    await self.visualiser_send_buffer.put((GE_SIGHT_TOPIC, self.generate_ge_sight_mqtt_message(player, fov, snow_number)))
 
             except Exception as e:
                 logger.error(f"Error in visualiser_state_process: {e}")
