@@ -6,7 +6,7 @@ from packet import GunPacket, HealthPacket, PacketFactory, IMU, HEALTH, GUN, CON
 from relay_server import RelayServer
 from ai_engine import AiEngine
 from game_state import GameState, VisualiserState
-from config import AI_READ_BUFFER_MAX_SIZE, CONNECTION_TOPIC, EVENT_TIMEOUT, GUN_TIMEOUT, SECRET_KEY, HOST, MQTT_HOST, MQTT_PORT, SEND_TOPICS, READ_TOPICS, MQTT_BASE_RECONNECT_DELAY, MQTT_MAX_RECONNECT_DELAY, MQTT_MAX_RECONNECT_ATTEMPTS, RELAY_SERVER_PORT, ACTION_TOPIC, ALL_INTERFACE
+from config import AI_READ_BUFFER_MAX_SIZE, CONNECTION_TOPIC, EVENT_TIMEOUT, GE_SIGHT_TOPIC, GUN_TIMEOUT, SECRET_KEY, HOST, MQTT_HOST, MQTT_PORT, SEND_TOPICS, READ_TOPICS, MQTT_BASE_RECONNECT_DELAY, MQTT_MAX_RECONNECT_DELAY, MQTT_MAX_RECONNECT_ATTEMPTS, RELAY_SERVER_PORT, ACTION_TOPIC, ALL_INTERFACE
 from logger import get_logger
 
 logger = get_logger(__name__)
@@ -290,10 +290,17 @@ class GameEngine:
         connection_payload = {
             'player': player,
             'device': device,
-            'ge_sight': self.p1_visualiser_state.get_fov() if player == 1 else self.p2_visualiser_state.get_fov(),
         }
 
         return json.dumps(connection_payload)
+    
+    def generate_ge_sight_mqtt_message(self, player: int, ge_sight: bool) -> json:
+        ge_sight_payload = {
+            'player': player,
+            'ge_sight': ge_sight,
+        }
+
+        return json.dumps(ge_sight_payload)
 
     def generate_action_mqtt_message(self, player: int, action: str, hit: bool, action_possible: bool, avalanche_count: int) -> json:
         action_payload = {
@@ -369,6 +376,8 @@ class GameEngine:
                 sight_payload = await self.visualiser_read_buffer.get()
                 sight_payload = json.loads(sight_payload)
                 player, fov, snow_number = sight_payload['player'], sight_payload['in_sight'], sight_payload['avalanche']
+                current_ge_sight = self.p1_visualiser_state.get_fov() if player == 1 else self.p2_visualiser_state.get_fov()
+
                 if player == 1:
                     self.p1_visualiser_state.set_fov(fov)
                     self.p1_visualiser_state.set_snow_number(snow_number)
@@ -377,6 +386,10 @@ class GameEngine:
                     self.p2_visualiser_state.set_fov(fov)
                     self.p2_visualiser_state.set_snow_number(snow_number)
                     logger.debug(f"Updated p2 visualiser state: {self.p2_visualiser_state.get_fov()}, {self.p2_visualiser_state.get_snow_number()}")
+
+                if current_ge_sight != fov:
+                        await self.visualiser_send_buffer.put((GE_SIGHT_TOPIC, self.generate_ge_sight_mqtt_message(player, fov)))
+
             except Exception as e:
                 logger.error(f"Error in visualiser_state_process: {e}")
 
