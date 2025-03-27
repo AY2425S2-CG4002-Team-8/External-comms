@@ -370,6 +370,10 @@ class GameEngine:
             player.num_shield = player_data.get("shields", player.num_shield)
 
     async def visualiser_state_process(self) -> None:
+        for player in [1, 2]:
+            fov = self.p1_visualiser_state.get_fov() if player == 1 else self.p2_visualiser_state.get_fov()
+            await self.visualiser_send_buffer.put((GE_SIGHT_TOPIC, self.generate_ge_sight_mqtt_message(player, fov)))
+            
         while True:
             try:
                 # Can consider 2 topics for p1, p2 to avoid congestion
@@ -388,7 +392,7 @@ class GameEngine:
                     logger.debug(f"Updated p2 visualiser state: {self.p2_visualiser_state.get_fov()}, {self.p2_visualiser_state.get_snow_number()}")
 
                 if current_ge_sight != fov:
-                        await self.visualiser_send_buffer.put((GE_SIGHT_TOPIC, self.generate_ge_sight_mqtt_message(player, fov)))
+                    await self.visualiser_send_buffer.put((GE_SIGHT_TOPIC, self.generate_ge_sight_mqtt_message(player, fov)))
 
             except Exception as e:
                 logger.error(f"Error in visualiser_state_process: {e}")

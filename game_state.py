@@ -62,7 +62,7 @@ class VisualiserState:
     Visualiser periodically updates with opponent FOV data which will be reflected as an encapsulated attribute of this class. 
     """
     def __init__(self):
-        self.fov = True
+        self.fov = False
         self.snow_number = 0
 
     def set_fov(self, fov: bool):
