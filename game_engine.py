@@ -259,16 +259,12 @@ class GameEngine:
                     timeout=EVENT_TIMEOUT 
                 )
                 # Double await to clear both flags after both updates received
-                eval_game_state = self.eval_client_read_buffer.get_nowait()
-                if eval_game_state is None:
-                    continue
-                logger.critical(f"Received game state from eval_server = {eval_game_state}")
+                eval_game_state = await self.eval_client_read_buffer.get()
+                logger.critical(f"Received FIRST game state from eval_server = {eval_game_state}")
                 self.update_game_state(eval_game_state)
 
-                eval_game_state = self.eval_client_read_buffer.get_nowait()
-                if eval_game_state is None:
-                    continue
-                logger.critical(f"Received game state from eval_server = {eval_game_state}")
+                eval_game_state = await self.eval_client_read_buffer.get()
+                logger.critical(f"Received SECOND game state from eval_server = {eval_game_state}")
                 self.update_game_state(eval_game_state)
                 
                 # Propagate the final game state to visualiser with ignored action and hit
@@ -276,14 +272,11 @@ class GameEngine:
                 await self.send_relay_node()
                 await self.visualiser_send_buffer.put((ACTION_TOPIC, mqtt_message))
                 
-                # Clear events for the next round
                 self.next_round()
 
-            except asyncio.QueueEmpty:
-                logger.error("Eval_client_buffer is empty, continuing")
-                self.next_round()
             except asyncio.TimeoutError:
                 logger.error("Timeout while waiting for eval_server data, continuing...")
+                self.next_round()
             except Exception as e:
                 logger.error(f"Error in eval_process: {e}")
                 
