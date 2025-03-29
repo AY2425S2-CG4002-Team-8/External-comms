@@ -214,7 +214,6 @@ class GameEngine:
                 # event_buffer: (player: int, action: str)
                 player, action = await self.event_buffer.get()
                 event, log = self.p1_event if player == 1 else self.p2_event, self.p1_logger if player == 1 else self.p2_logger
-                log(f"round: {self.perceived_game_round}, action: {action}")
 
                 if self.is_invalid(event=event, action=action, perceived_game_round=self.perceived_game_round):
                     log(f"Dropping action: {action} in round {self.perceived_game_round}")
@@ -229,8 +228,8 @@ class GameEngine:
 
                 # Prepare for eval_server
                 eval_data = self.generate_game_state(player, action)
-                log(f"Sending eval data for player {player} with FOV: {hit}, ACTION_POSSIBLE: {action_possible} and SNOW_NUMBER: {snow_number} to eval_server: {eval_data}")
                 await self.eval_client_send_buffer.put(eval_data)
+                log(f"ROUND: {self.perceived_game_round}. Sending eval data for player {player} with FOV: {hit}, ACTION_POSSIBLE: {action_possible} and SNOW_NUMBER: {snow_number} to eval_server: {eval_data}")
 
                 event.set()
                 await self.send_visualiser_action(ACTION_TOPIC, player, action, hit, action_possible, snow_number)
@@ -277,17 +276,16 @@ class GameEngine:
             except asyncio.TimeoutError:
                 logger.error("Timeout while waiting for eval_server data, continuing...")
                 self.next_round()
+                
             except Exception as e:
                 logger.error(f"Error in eval_process: {e}")
                 
     async def send_visualiser_connection(self, topic: str, player: int, device: str) -> None:
         message = self.generate_connection_mqtt_message(player, device)
-        logger.debug(f"Sending connection to topic {topic} on visualiser: {message}")
         await self.visualiser_send_buffer.put((topic, message))
 
     async def send_visualiser_action(self, topic: str, player: int, action: str, hit: bool, action_possible: bool, avalanche_count: int) -> None:
         message = self.generate_action_mqtt_message(player, action, hit, action_possible, avalanche_count)
-        logger.debug(f"Sending action to topic {topic} on visualiser: {message}")
         await self.visualiser_send_buffer.put((topic, message))
 
     def generate_connection_mqtt_message(self, player: int, device: str) -> json:
@@ -392,7 +390,6 @@ class GameEngine:
 
                 visualiser_state.set_fov(fov)
                 visualiser_state.set_snow_number(snow_number)
-                logger.debug(f"Updated player {player} visualiser state: {self.visualiser_state.get_fov()}, {self.visualiser_state.get_snow_number()}")
 
                 if current_ge_sight != fov or current_ge_avalanche != snow_number:
                     await self.visualiser_send_buffer.put((GE_SIGHT_TOPIC, self.generate_ge_sight_mqtt_message(player, fov, snow_number)))

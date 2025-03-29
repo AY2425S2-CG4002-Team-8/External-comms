@@ -85,7 +85,7 @@ def run_game_engine(client, remote_port: int, local_port: int):
 
 
 def read_stream(stream, stream_name, local_port: int):
-    with open(f"ge_{local_port}.log", "a") as log_file:
+    with open(f"log/ge_{local_port}.log", "a") as log_file:
         for line in iter(lambda: stream.readline(2048), ""):
             if line:
                 entry = f"[REMOTE {stream_name}] {line.strip()}"
