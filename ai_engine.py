@@ -141,9 +141,10 @@ class AiEngine:
                 print("DMA_1 RECV ERR: " + self.dma_1_recv.error)
 
         pred = np.argmax(output_buffer)
+        conf = np.max(output_buffer)
         pred_class = self.label_encoder.inverse_transform([pred])
         del input_buffer, output_buffer
-        return pred_class[0]
+        return conf, pred_class[0]
     
     async def run(self) -> None:
         await asyncio.gather(
@@ -231,9 +232,13 @@ class AiEngine:
                 await self.send_visualiser_cooldown(COOLDOWN_TOPIC, player, False)
                 df = pd.DataFrame([bufs])
 
-                predicted_data = await asyncio.to_thread(self.classify, df, player)
+                predicted_conf, predicted_data = await asyncio.to_thread(self.classify, df, player)
                 predicted_data = "bomb" if predicted_data == "snowbomb" else predicted_data
-                log(f"AI Engine Prediction: {predicted_data}")
+                log(f"AI Engine Prediction: {predicted_data}, Confidence: {predicted_conf}")
+
+                if predicted_conf < 0.75:
+                    predicted_data = "walk"
+                    log(f"Low Confidence, DEFAULTING to WALK")
 
                 await self.write_buffer.put((player, predicted_data))
                 await asyncio.sleep(AI_ROUND_TIMEOUT)
