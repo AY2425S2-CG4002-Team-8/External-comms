@@ -31,10 +31,10 @@ class AiEngine:
         self.visualiser_send_buffer = visualiser_send_buffer
 
         self.COLUMNS = ['gun_ax', 'gun_ay', 'gun_az', 'gun_gx', 'gun_gy', 'gun_gz', 'glove_ax', 'glove_ay', 'glove_az', 'glove_gx', 'glove_gy', 'glove_gz']
-        self.bitstream_path = "/home/xilinx/capstone/FPGA-AI/mlp_trim35.bit"
+        self.bitstream_path = "/home/xilinx/capstone/FPGA-AI/mlp_trim35_new.bit"
         self.input_size = 132 
         self.output_size = 10  
-        self.scaler_path = "/home/xilinx/capstone/FPGA-AI/robust_scaler_mlp_trim35.save"
+        self.scaler_path = "/home/xilinx/capstone/FPGA-AI/robust_scaler_mlp_trim35_new.save"
         self.scaler = joblib.load(self.scaler_path)
         self.classes = '/home/xilinx/capstone/FPGA-AI/classes_comb.npy'
         self.label_encoder = LabelEncoder()
@@ -79,7 +79,7 @@ class AiEngine:
         time_series_set = df.iloc[0,:]
         row_df = pd.DataFrame()
         for col in cols:
-            cell_cols = [f'{col}_sem', f'{col}_mean', f'{col}_rank', f'{col}_max', f'{col}_min', f'{col}_range', f'{col}_iqr', f'{col}_skew', f'{col}_kurt', f'{col}_std', f'{col}_median']
+            cell_cols = [f'{col}_mean', f'{col}_sem', f'{col}_rank', f'{col}_max', f'{col}_min', f'{col}_range', f'{col}_iqr', f'{col}_skew', f'{col}_kurt', f'{col}_std', f'{col}_median']
             cell_df = pd.DataFrame(columns=cell_cols)
             time_series =  pd.DataFrame(time_series_set[col])
             cell_df[f'{col}_mean'] = time_series.mean()
@@ -141,9 +141,10 @@ class AiEngine:
                 print("DMA_1 RECV ERR: " + self.dma_1_recv.error)
 
         pred = np.argmax(output_buffer)
+        conf = np.max(output_buffer)
         pred_class = self.label_encoder.inverse_transform([pred])
         del input_buffer, output_buffer
-        return pred_class[0]
+        return conf, pred_class[0]
     
     async def run(self) -> None:
         await asyncio.gather(
@@ -231,9 +232,13 @@ class AiEngine:
                 await self.send_visualiser_cooldown(COOLDOWN_TOPIC, player, False)
                 df = pd.DataFrame([bufs])
 
-                predicted_data = await asyncio.to_thread(self.classify, df, player)
+                predicted_conf, predicted_data = await asyncio.to_thread(self.classify, df, player)
                 predicted_data = "bomb" if predicted_data == "snowbomb" else predicted_data
-                log(f"AI Engine Prediction: {predicted_data}")
+                log(f"AI Engine Prediction: {predicted_data}, Confidence: {predicted_conf}")
+
+                if predicted_conf < 0.75:
+                    predicted_data = "walk"
+                    log(f"Low Confidence, DEFAULTING to WALK")
 
                 await self.write_buffer.put((player, predicted_data))
                 await asyncio.sleep(AI_ROUND_TIMEOUT)
