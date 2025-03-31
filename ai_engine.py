@@ -236,7 +236,7 @@ class AiEngine:
                 predicted_data = "bomb" if predicted_data == "snowbomb" else predicted_data
                 log(f"AI Engine Prediction: {predicted_data}, Confidence: {predicted_conf}")
 
-                if predicted_conf < 0.75:
+                if predicted_conf < 0.70:
                     predicted_data = "walk"
                     log(f"Low Confidence, DEFAULTING to WALK")
 
