@@ -79,7 +79,7 @@ class AiEngine:
         time_series_set = df.iloc[0,:]
         row_df = pd.DataFrame()
         for col in cols:
-            cell_cols = [f'{col}_mean', f'{col}_sem', f'{col}_rank', f'{col}_max', f'{col}_min', f'{col}_range', f'{col}_iqr', f'{col}_skew', f'{col}_kurt', f'{col}_std', f'{col}_median']
+            cell_cols = [f'{col}_sem', f'{col}_mean', f'{col}_rank', f'{col}_max', f'{col}_min', f'{col}_range', f'{col}_iqr', f'{col}_skew', f'{col}_kurt', f'{col}_std', f'{col}_median']
             cell_df = pd.DataFrame(columns=cell_cols)
             time_series =  pd.DataFrame(time_series_set[col])
             cell_df[f'{col}_mean'] = time_series.mean()
