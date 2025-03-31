@@ -391,8 +391,7 @@ class GameEngine:
                 visualiser_state.set_fov(fov)
                 visualiser_state.set_snow_number(snow_number)
 
-                if current_ge_sight != fov or current_ge_avalanche != snow_number:
-                    await self.visualiser_send_buffer.put((GE_SIGHT_TOPIC, self.generate_ge_sight_mqtt_message(player, fov, snow_number)))
+                await self.visualiser_send_buffer.put((GE_SIGHT_TOPIC, self.generate_ge_sight_mqtt_message(player, fov, snow_number)))
 
             except Exception as e:
                 logger.error(f"Error in visualiser_state_process: {e}")
