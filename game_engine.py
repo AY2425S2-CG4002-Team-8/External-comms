@@ -216,7 +216,7 @@ class GameEngine:
                 event, log = self.p1_event if player == 1 else self.p2_event, self.p1_logger if player == 1 else self.p2_logger
 
                 if self.is_invalid(event=event, action=action, perceived_game_round=self.perceived_game_round):
-                    log(f"Dropping action: {action} in round {self.perceived_game_round}")
+                    log(f"Dropping action: {action} in round {self.perceived_game_round}, with event: {event.is_set()}")
                     continue
 
                 visualiser_state = self.p1_visualiser_state if player == 1 else self.p2_visualiser_state
