@@ -8,6 +8,7 @@ from ai_engine import AiEngine
 from game_state import GameState, VisualiserState
 from config import AI_READ_BUFFER_MAX_SIZE, CONNECTION_TOPIC, EVENT_TIMEOUT, GE_SIGHT_TOPIC, GUN_TIMEOUT, SECRET_KEY, HOST, MQTT_HOST, MQTT_PORT, SEND_TOPICS, READ_TOPICS, MQTT_BASE_RECONNECT_DELAY, MQTT_MAX_RECONNECT_DELAY, MQTT_MAX_RECONNECT_ATTEMPTS, RELAY_SERVER_PORT, ACTION_TOPIC, ALL_INTERFACE
 from logger import get_logger
+import random
 
 logger = get_logger(__name__)
 
@@ -45,7 +46,16 @@ class GameEngine:
         self.p1_logger = logger.ge_p1
         self.p2_logger = logger.ge_p2
 
+        self.actions = ["badminton", "fencing", "boxing", "golf", "shield", "reload", "bomb"]
+        self.roulette_dictionary = {}
+
         self.tasks = []
+
+    def init_roulette(self):
+        for player in [1, 2]:
+            self.roulette_dictionary[player] = {
+                action: 2 for action in self.actions
+            }
 
     async def initiate_mqtt(self):
         try:
@@ -101,25 +111,11 @@ class GameEngine:
         """Handles different packet types and places actions into the appropriate queues."""
         try:
             player = packet.player
-            if packet.type == HEALTH:
-                logger.info(f"HEALTH PACKET Received")
-                if player == 1:
-                    await self.p1_health_buffer.put(player)
-                else:
-                    await self.p2_health_buffer.put(player)
-            elif packet.type == GUN:
+            if packet.type == GUN:
                 logger.info(f"GUN PACKET Received")
-                # if player == 1:
-                #     await self.p1_gun_buffer.put(player)
-                # else:
-                #     await self.p2_gun_buffer.put(player)
                 await self.event_buffer.put((player, "gun"))
             elif packet.type == IMU:
                 logger.info(f"IMU PACKET Received")
-                # if player == 1:
-                #     await self.p1_ai_engine_read_buffer.put(packet)
-                # else:
-                #     await self.p2_ai_engine_read_buffer.put(packet)
                 try:
                     if player == 1:
                         self.p1_ai_engine_read_buffer.put_nowait(packet)
@@ -167,26 +163,6 @@ class GameEngine:
                 await self.send_visualiser_connection(CONNECTION_TOPIC, player, device)
             except Exception as e:
                 logger.error(f"Error in connection_process: {e}")
-    
-    # async def gun_process(self, gun_buffer: asyncio.Queue, health_buffer: asyncio.Queue) -> None:
-    #     """
-    #     When gun packet is received, wait for health packet with timeout
-    #     If health packet received before timeout, IR registered , and puts in central event buffer. Else, shot missed
-    #     """
-    #     while True:
-    #         try:
-    #             player = await gun_buffer.get()
-    #             logger.critical(f"Attempted to shoot")
-    #             try:
-    #                 await asyncio.wait_for(health_buffer.get(), timeout=GUN_TIMEOUT)
-    #                 logger.critical("Hit - Received health packet")
-    #                 await self.event_buffer.put((player, "gun"))
-    #                 logger.critical("Added gun to action buffer")
-    #             except asyncio.TimeoutError:
-    #                 await self.event_buffer.put((player, "miss"))
-    #                 logger.critical(f"Missed - No Health Packet Received")
-    #         except Exception as e:
-    #             logger.error(f"Error in handle_gun: {e}")
                 
     async def prediction_process(self) -> None:
         """
@@ -234,6 +210,7 @@ class GameEngine:
 
                 event.set()
                 await self.send_visualiser_action(ACTION_TOPIC, player, action, hit, action_possible, snow_number)
+                self.update_roulette_dictionary(player, action)
                 
             except Exception as e:
                 logger.error(f"Exception in process: {e}")
@@ -243,6 +220,13 @@ class GameEngine:
         self.p1_event.clear()
         self.p2_event.clear()
         self.perceived_game_round += 1
+
+    def update_roulette_dictionary(self, player: int, action: str) -> None:
+        if action not in self.actions:
+            return 
+        self.roulette_dictionary[player][action] -= 1
+        if self.roulette_dictionary[player][action] == 0:
+            del self.roulette_dictionary[player][action]
 
     async def eval_process(self) -> None:
         """
@@ -258,10 +242,18 @@ class GameEngine:
                     ),
                     timeout=EVENT_TIMEOUT 
                 )
+                if self.p1_event.is_set():
+                    logger.error("P2 event is not set, continuing...")
+                    await self.eval_client_send_buffer.put(self.generate_game_state(2, self.russian_roulette(2)))
+
                 # Double await to clear both flags after both updates received
                 eval_game_state = await self.eval_client_read_buffer.get()
                 logger.critical(f"Received FIRST game state from eval_server = {eval_game_state}")
                 self.update_game_state(eval_game_state)
+                
+                if self.p2_event.is_set():
+                    logger.error("P1 event is not set, continuing...")
+                    await self.eval_client_send_buffer.put(self.generate_game_state(1, self.russian_roulette(1)))
 
                 eval_game_state = await self.eval_client_read_buffer.get()
                 logger.critical(f"Received SECOND game state from eval_server = {eval_game_state}")
@@ -280,7 +272,13 @@ class GameEngine:
                 
             except Exception as e:
                 logger.error(f"Error in eval_process: {e}")
-                
+
+    def russian_roulette(self, player: int) -> str:
+        action = random.choice(list(self.roulette_dictionary[player].keys()))
+        self.update_roulette_dictionary(player, action)
+
+        return action
+    
     async def send_visualiser_connection(self, topic: str, player: int, device: str) -> None:
         message = self.generate_connection_mqtt_message(player, device)
         await self.visualiser_send_buffer.put((topic, message))
@@ -381,13 +379,10 @@ class GameEngine:
 
         while True:
             try:
-                # Can consider 2 topics for p1, p2 to avoid congestion
                 sight_payload = await self.visualiser_read_buffer.get()
                 sight_payload = json.loads(sight_payload)
                 player, fov, snow_number = sight_payload['player'], sight_payload['in_sight'], sight_payload['avalanche']
                 visualiser_state = self.p1_visualiser_state if player == 1 else self.p2_visualiser_state
-                current_ge_sight = self.p1_visualiser_state.get_fov() if player == 1 else self.p2_visualiser_state.get_fov()
-                current_ge_avalanche = self.p1_visualiser_state.get_snow_number() if player == 1 else self.p2_visualiser_state.get_snow_number()
 
                 visualiser_state.set_fov(fov)
                 visualiser_state.set_snow_number(snow_number)
@@ -410,8 +405,6 @@ class GameEngine:
             asyncio.create_task(self.initiate_relay_server()),
             asyncio.create_task(self.initiate_ai_engine()),
             asyncio.create_task(self.relay_process()),
-            # asyncio.create_task(self.gun_process(gun_buffer=self.p1_gun_buffer, health_buffer=self.p1_health_buffer)),
-            # asyncio.create_task(self.gun_process(gun_buffer=self.p2_gun_buffer, health_buffer=self.p2_health_buffer)),
             asyncio.create_task(self.prediction_process()),
             asyncio.create_task(self.eval_process()),
             asyncio.create_task(self.process()),
@@ -419,6 +412,7 @@ class GameEngine:
             asyncio.create_task(self.connection_process())
         ]
         try:
+            self.init_roulette()
             await asyncio.gather(*self.tasks)
         except Exception as e:
             logger.error(f"An error occurred while running game engine tasks: {e}")

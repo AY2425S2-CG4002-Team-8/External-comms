@@ -219,7 +219,7 @@ class AiEngine:
                         bufs['glove_gy'].append(packet.glove_gy)
                         bufs['glove_gz'].append(packet.glove_gz)
                         packets += 1
-                        log(f"IMU packet Received on AI: {i+1}")
+                        log(f"IMU packet Received on AI: {i+1}, with sequence number {packet.seq}")
 
                     except asyncio.TimeoutError:
                         break
