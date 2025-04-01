@@ -217,7 +217,7 @@ class GameEngine:
 
                 if self.is_invalid(event=event, action=action, perceived_game_round=self.perceived_game_round):
                     log(f"Dropping action: {action} in round {self.perceived_game_round}, with event: {event.is_set()}")
-                    await self.send_visualiser_action(ACTION_TOPIC, player, "drop", None, None, None)
+                    await self.send_visualiser_action(ACTION_TOPIC, player, "drop", False, False, 0)
                     continue
 
                 visualiser_state = self.p1_visualiser_state if player == 1 else self.p2_visualiser_state
