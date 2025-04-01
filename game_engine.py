@@ -217,6 +217,7 @@ class GameEngine:
 
                 if self.is_invalid(event=event, action=action, perceived_game_round=self.perceived_game_round):
                     log(f"Dropping action: {action} in round {self.perceived_game_round}, with event: {event.is_set()}")
+                    await self.send_visualiser_action(ACTION_TOPIC, player, "drop", None, None, None)
                     continue
 
                 visualiser_state = self.p1_visualiser_state if player == 1 else self.p2_visualiser_state
@@ -267,7 +268,7 @@ class GameEngine:
                 self.update_game_state(eval_game_state)
                 
                 # Propagate the final game state to visualiser with ignored action and hit
-                mqtt_message = self.generate_action_mqtt_message(1, None, None, None, None)
+                mqtt_message = self.generate_action_mqtt_message(0, None, None, None, None)
                 await self.send_relay_node()
                 await self.visualiser_send_buffer.put((ACTION_TOPIC, mqtt_message))
                 
