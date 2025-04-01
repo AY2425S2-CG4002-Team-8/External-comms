@@ -222,11 +222,14 @@ class GameEngine:
         self.perceived_game_round += 1
 
     def update_roulette_dictionary(self, player: int, action: str) -> None:
-        if action not in self.actions:
-            return 
-        self.roulette_dictionary[player][action] -= 1
-        if self.roulette_dictionary[player][action] == 0:
-            del self.roulette_dictionary[player][action]
+        try:
+            if action not in self.actions:
+                return 
+            self.roulette_dictionary[player][action] -= 1
+            if action in self.roulette_dictionary and self.roulette_dictionary[player][action] == 0:
+                del self.roulette_dictionary[player][action]
+        except:
+            logger.error(f"Error in update rolette dictionary: {e}")
 
     async def eval_process(self) -> None:
         """

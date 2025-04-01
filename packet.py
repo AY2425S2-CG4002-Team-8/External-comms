@@ -41,6 +41,8 @@ class ImuPacket:
             self.glove_gx = bytearray(2)
             self.glove_gy = bytearray(2)
             self.glove_gz = bytearray(2) # Total 26 byte
+            self.side = bytearray(1)
+
         else:
             self.seq = byteArray[1]
             self.player = byteArray[2]
@@ -56,6 +58,7 @@ class ImuPacket:
             self.glove_gx = struct.unpack('<h',  byteArray[21:23])[0]
             self.glove_gy = struct.unpack('<h', byteArray[23:25])[0]
             self.glove_gz = struct.unpack('<h', byteArray[25:27])[0]
+            self.side = byteArray[26]
 
     def to_bytes(self) -> bytes:
         """Convert ImuPacket to bytes for transmission."""
@@ -75,6 +78,7 @@ class ImuPacket:
             + struct.pack('<h', self.glove_gx)
             + struct.pack('<h', self.glove_gy)
             + struct.pack('<h', self.glove_gz)
+            + struct.pack('<B', self.side)
         )
 
     def __len__(self):
