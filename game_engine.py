@@ -41,7 +41,8 @@ class GameEngine:
         self.p1_health_buffer = asyncio.Queue()
         self.p2_gun_buffer = asyncio.Queue()
         self.p2_health_buffer = asyncio.Queue()
-        self.event_buffer = asyncio.Queue()
+        self.p1_event_buffer = asyncio.Queue()
+        self.p2_event_buffer = asyncio.Queue()
 
         self.p1_logger = logger.ge_p1
         self.p2_logger = logger.ge_p2
@@ -171,7 +172,10 @@ class GameEngine:
         while True:
             try:
                 player, predicted_data = await self.ai_engine_write_buffer.get()
-                await self.event_buffer.put((player, predicted_data))
+                if player == 1:
+                    await self.p1_event_buffer.put((player, predicted_data))
+                else:
+                    await self.p2_event_buffer.put((player, predicted_data))
             except Exception as e:
                 logger.error(f"Error in prediction process: {e}")
     
@@ -180,7 +184,7 @@ class GameEngine:
             return True
         return action in ["shoot", "walk"]
     
-    async def process(self) -> None:
+    async def process(self, player: int, event_buffer: asyncio.Queue, event: asyncio.Event, visualiser_state, log) -> None:
         """
         Sends action (gun or AI) to visualiser, followed by the avalanche damage if any.
         Updates game state accordingly and puts into eval_client_send_buffer to queue sending to eval_server
@@ -188,27 +192,25 @@ class GameEngine:
         while True:
             try:
                 # event_buffer: (player: int, action: str)
-                player, action = await self.event_buffer.get()
-                event, log = self.p1_event if player == 1 else self.p2_event, self.p1_logger if player == 1 else self.p2_logger
+                action = await event_buffer.get()
 
                 if self.is_invalid(event=event, action=action, perceived_game_round=self.perceived_game_round):
                     log(f"Dropping action: {action} in round {self.perceived_game_round}, with event: {event.is_set()}")
                     await self.send_visualiser_action(ACTION_TOPIC, player, "drop", False, False, 0)
                     continue
 
-                visualiser_state = self.p1_visualiser_state if player == 1 else self.p2_visualiser_state
                 fov, snow_number = visualiser_state.get_fov(), visualiser_state.get_snow_number()
 
-                hit, action_possible = self.game_state.perform_action(action, player, fov, snow_number)
+                async with self.game_state_lock:
+                    hit, action_possible = self.game_state.perform_action(action, player, fov, snow_number)
+                    action = "gun" if action == "miss" else action
 
-                action = "gun" if action == "miss" else action
+                    # Prepare for eval_server
+                    eval_data = self.generate_game_state(player, action)
+                    await self.eval_client_send_buffer.put(eval_data)
+                    event.set()
+                    log(f"ROUND: {self.perceived_game_round}. Sending eval data for player {player} with FOV: {hit}, ACTION_POSSIBLE: {action_possible} and SNOW_NUMBER: {snow_number} to eval_server: {eval_data}")
 
-                # Prepare for eval_server
-                eval_data = self.generate_game_state(player, action)
-                await self.eval_client_send_buffer.put(eval_data)
-                log(f"ROUND: {self.perceived_game_round}. Sending eval data for player {player} with FOV: {hit}, ACTION_POSSIBLE: {action_possible} and SNOW_NUMBER: {snow_number} to eval_server: {eval_data}")
-
-                event.set()
                 await self.send_visualiser_action(ACTION_TOPIC, player, action, hit, action_possible, snow_number)
                 self.update_roulette_dictionary(player, action)
                 
@@ -410,8 +412,9 @@ class GameEngine:
             asyncio.create_task(self.initiate_ai_engine()),
             asyncio.create_task(self.relay_process()),
             asyncio.create_task(self.prediction_process()),
+            asyncio.create_task(self.process(player=1, event_buffer=self.p1_event_buffer, event=self.p1_event, visualiser_state=self.p1_visualiser_state, log=self.p1_logger)),
+            asyncio.create_task(self.process(player=2, event_buffer=self.p2_event_buffer, event=self.p2_event, visualiser_state=self.p2_visualiser_state, log=self.p2_logger)),
             asyncio.create_task(self.eval_process()),
-            asyncio.create_task(self.process()),
             asyncio.create_task(self.visualiser_state_process()),
             asyncio.create_task(self.connection_process())
         ]
