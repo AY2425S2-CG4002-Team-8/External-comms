@@ -275,13 +275,21 @@ class AiEngine:
                 predicted_data = "bomb" if predicted_data == "snowbomb" else predicted_data
                 log(f"AI Engine Prediction: {predicted_data}, Confidence: {predicted_conf}")
 
+                max_len = len(bufs['gun_ax'])  # Assuming all lists have the same length
+                unraveled_data = []
+                for i in range(max_len):
+                    row = {col: bufs[col][i] for col in self.COLUMNS}
+                    unraveled_data.append(row)
+            
+                google_drive_df = pd.DataFrame(unraveled_data)
+
                 # Add predicted_data and predicted_conf to the dataframe
-                df["Action"] = predicted_data
-                df["Confidence"] = predicted_conf
+                google_drive_df["Action"] = predicted_data
+                google_drive_df["Confidence"] = predicted_conf
 
                 # Save to CSV
                 if predicted_data not in ["shoot", "walk"]:
-                    self.save_to_csv(df, f"round_{(self.temporary_round + 2 ) // 2}_player_{player}_action_{predicted_data}.csv")
+                    self.save_to_csv(google_drive_df, f"round_{(self.temporary_round + 2 ) // 2}_player_{player}_action_{predicted_data}.csv")
 
                 await self.write_buffer.put((player, predicted_data))
                 await asyncio.sleep(AI_ROUND_TIMEOUT)
