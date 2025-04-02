@@ -40,6 +40,7 @@ class GameState:
         # perform the actual action
         if action == "miss":
             action_possible = attacker.miss()
+            return False, action_possible
         elif action == "gun" or action == "miss":
             action_possible = attacker.shoot(opponent, fov)
         elif action == "shield":

@@ -238,13 +238,17 @@ class GameEngine:
         """ 
         while True:
             try:
-                await asyncio.wait_for(
-                    asyncio.gather(
-                        self.p1_event.wait(),
-                        self.p2_event.wait()
-                    ),
-                    timeout=EVENT_TIMEOUT 
-                )
+                try:
+                    await asyncio.wait_for(
+                        asyncio.gather(
+                            self.p1_event.wait(),
+                            self.p2_event.wait()
+                        ),
+                        timeout=EVENT_TIMEOUT 
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning("Event flag timeout occurred, proceeding without waiting.")
+                    
                 if not self.p1_event.is_set():
                     logger.error("P2 event is not set, continuing...")
                     await self.eval_client_send_buffer.put(self.generate_game_state(1, self.russian_roulette(1)))
@@ -253,7 +257,7 @@ class GameEngine:
                 eval_game_state = await self.eval_client_read_buffer.get()
                 logger.critical(f"Received FIRST game state from eval_server = {eval_game_state}")
                 self.update_game_state(eval_game_state)
-                
+
                 if not self.p2_event.is_set():
                     logger.error("P1 event is not set, continuing...")
                     await self.eval_client_send_buffer.put(self.generate_game_state(2, self.russian_roulette(2)))
@@ -261,20 +265,17 @@ class GameEngine:
                 eval_game_state = await self.eval_client_read_buffer.get()
                 logger.critical(f"Received SECOND game state from eval_server = {eval_game_state}")
                 self.update_game_state(eval_game_state)
-                
+
                 # Propagate the final game state to visualiser with ignored action and hit
                 mqtt_message = self.generate_action_mqtt_message(0, None, None, None, None)
                 await self.send_relay_node()
                 await self.visualiser_send_buffer.put((ACTION_TOPIC, mqtt_message))
-                
+
                 self.next_round()
 
-            except asyncio.TimeoutError:
-                logger.error("Timeout while waiting for eval_server data, continuing...")
-                self.next_round()
-                
             except Exception as e:
                 logger.error(f"Error in eval_process: {e}")
+
 
     def russian_roulette(self, player: int) -> str:
         action = random.choice(list(self.roulette_dictionary[player].keys()))
