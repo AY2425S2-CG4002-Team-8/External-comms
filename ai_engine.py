@@ -280,7 +280,7 @@ class AiEngine:
                 predicted_conf, predicted_data = await asyncio.to_thread(self.classify, df, player)
                 predicted_data = "bomb" if predicted_data == "snowbomb" else predicted_data
                 log(f"AI Engine Prediction: {predicted_data}, Confidence: {predicted_conf}")
-                await asyncio.to_thread(self.google_drive_process, bufs, predicted_data, predicted_conf)
+                await self.google_drive_process(bufs, predicted_data, predicted_conf)
                 await self.write_buffer.put((player, predicted_data))
                 await asyncio.sleep(AI_ROUND_TIMEOUT)
                 await self.send_visualiser_cooldown(COOLDOWN_TOPIC, player, True)
