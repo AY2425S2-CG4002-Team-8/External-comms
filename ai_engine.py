@@ -33,6 +33,7 @@ class AiEngine:
         self.visualiser_send_buffer = visualiser_send_buffer
 
         self.temporary_round = 0
+        self.count_lock = asyncio.Lock()
 
         self.COLUMNS = ['gun_ax', 'gun_ay', 'gun_az', 'gun_gx', 'gun_gy', 'gun_gz', 'glove_ax', 'glove_ay', 'glove_az', 'glove_gx', 'glove_gy', 'glove_gz']
         self.bitstream_path = "/home/xilinx/capstone/FPGA-AI/mlp_trim35_unseen.bit"
@@ -180,20 +181,6 @@ class AiEngine:
 
         return json.dumps(cooldown_payload)
 
-    def save_data_to_csv(self, data_dictionary):
-        """
-        Saves the data dictionary as a CSV file in the output directory.
-        """
-        if not os.path.exists(self.csv_dir):
-            os.makedirs(self.csv_dir)  # Ensure the directory exists
-
-        # Generate a timestamped filename
-        filename = f"{self.csv_dir}/prediction_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-
-        # Convert dictionary to DataFrame and save
-        df = pd.DataFrame.from_dict(data_dictionary)
-        df.to_csv(filename, index=False)  # Save without row indices
-
     # Authenticate Google Drive API
     def authenticate_google_drive(self):
         creds = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=["https://www.googleapis.com/auth/drive"])
@@ -227,6 +214,25 @@ class AiEngine:
 
         # Upload to Google Drive
         self.upload_to_google_drive(filename)
+
+    async def google_drive_process(self, bufs, predicted_data, predicted_conf):
+         async with self.count_lock:
+            max_len = len(bufs['gun_ax'])  # Assuming all lists have the same length
+            unraveled_data = []
+            for i in range(max_len):
+                row = {col: bufs[col][i] for col in self.COLUMNS}
+                unraveled_data.append(row)
+        
+            google_drive_df = pd.DataFrame(unraveled_data)
+
+            # Add predicted_data and predicted_conf to the dataframe
+            google_drive_df["Action"] = predicted_data
+            google_drive_df["Confidence"] = predicted_conf
+
+            # Save to CSV
+            if predicted_data not in ["shoot", "walk"]:
+                self.save_to_csv(google_drive_df, f"round_{(self.temporary_round + 2) // 2}_player_{player}_action_{predicted_data}.csv")
+            self.temporary_round += 1
 
     async def predict(self, player: int, read_buffer: asyncio.Queue) -> None:
         """
@@ -274,23 +280,7 @@ class AiEngine:
                 predicted_conf, predicted_data = await asyncio.to_thread(self.classify, df, player)
                 predicted_data = "bomb" if predicted_data == "snowbomb" else predicted_data
                 log(f"AI Engine Prediction: {predicted_data}, Confidence: {predicted_conf}")
-
-                max_len = len(bufs['gun_ax'])  # Assuming all lists have the same length
-                unraveled_data = []
-                for i in range(max_len):
-                    row = {col: bufs[col][i] for col in self.COLUMNS}
-                    unraveled_data.append(row)
-            
-                google_drive_df = pd.DataFrame(unraveled_data)
-
-                # Add predicted_data and predicted_conf to the dataframe
-                google_drive_df["Action"] = predicted_data
-                google_drive_df["Confidence"] = predicted_conf
-
-                # Save to CSV
-                if predicted_data not in ["shoot", "walk"]:
-                    self.save_to_csv(google_drive_df, f"round_{(self.temporary_round + 2 ) // 2}_player_{player}_action_{predicted_data}.csv")
-
+                await asyncio.to_thread(self.google_drive_process, bufs, predicted_data, predicted_conf)
                 await self.write_buffer.put((player, predicted_data))
                 await asyncio.sleep(AI_ROUND_TIMEOUT)
                 await self.send_visualiser_cooldown(COOLDOWN_TOPIC, player, True)
