@@ -173,9 +173,9 @@ class GameEngine:
             try:
                 player, predicted_data = await self.ai_engine_write_buffer.get()
                 if player == 1:
-                    await self.p1_event_buffer.put((player, predicted_data))
+                    await self.p1_event_buffer.put(predicted_data)
                 else:
-                    await self.p2_event_buffer.put((player, predicted_data))
+                    await self.p2_event_buffer.put(predicted_data)
             except Exception as e:
                 logger.error(f"Error in prediction process: {e}")
     
@@ -191,7 +191,6 @@ class GameEngine:
         """
         while True:
             try:
-                # event_buffer: (player: int, action: str)
                 action = await event_buffer.get()
 
                 if self.is_invalid(event=event, action=action, perceived_game_round=self.perceived_game_round):
