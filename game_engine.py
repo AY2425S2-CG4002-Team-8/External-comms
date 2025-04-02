@@ -1,4 +1,5 @@
 import asyncio
+from collections import deque
 import json
 from mqtt.mqtt_client import MqttClient
 from eval_client import EvalClient
@@ -6,9 +7,13 @@ from packet import GunPacket, HealthPacket, PacketFactory, IMU, HEALTH, GUN, CON
 from relay_server import RelayServer
 from ai_engine import AiEngine
 from game_state import GameState, VisualiserState
-from config import AI_READ_BUFFER_MAX_SIZE, CONNECTION_TOPIC, EVENT_TIMEOUT, GE_SIGHT_TOPIC, GUN_TIMEOUT, SECRET_KEY, HOST, MQTT_HOST, MQTT_PORT, SEND_TOPICS, READ_TOPICS, MQTT_BASE_RECONNECT_DELAY, MQTT_MAX_RECONNECT_DELAY, MQTT_MAX_RECONNECT_ATTEMPTS, RELAY_SERVER_PORT, ACTION_TOPIC, ALL_INTERFACE
+from config import AI_READ_BUFFER_MAX_SIZE, CONNECTION_TOPIC, EVENT_TIMEOUT, GE_SIGHT_TOPIC, GOOGLE_DRIVE_FOLDER_ID, GUN_TIMEOUT, SECRET_KEY, HOST, MQTT_HOST, MQTT_PORT, SEND_TOPICS, READ_TOPICS, MQTT_BASE_RECONNECT_DELAY, MQTT_MAX_RECONNECT_DELAY, MQTT_MAX_RECONNECT_ATTEMPTS, RELAY_SERVER_PORT, ACTION_TOPIC, ALL_INTERFACE, SERVICE_ACCOUNT_FILE
 from logger import get_logger
 import random
+import os
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
+from google.oauth2 import service_account
 
 logger = get_logger(__name__)
 
@@ -49,6 +54,11 @@ class GameEngine:
 
         self.actions = ["badminton", "fencing", "boxing", "golf", "shield", "reload", "bomb"]
         self.roulette_dictionary = {}
+
+
+        self.df_buffer = []
+        self.p1_end_game_event = asyncio.Event()
+        self.p2_end_game_event = asyncio.Event()
 
         self.tasks = []
 
@@ -184,7 +194,7 @@ class GameEngine:
             return True
         return action in ["shoot", "walk"]
     
-    async def process(self, player: int, event_buffer: asyncio.Queue, event: asyncio.Event, visualiser_state, log) -> None:
+    async def process(self, player: int, event_buffer: asyncio.Queue, event: asyncio.Event, visualiser_state, log, end_game_event: asyncio.Event) -> None:
         """
         Sends action (gun or AI) to visualiser, followed by the avalanche damage if any.
         Updates game state accordingly and puts into eval_client_send_buffer to queue sending to eval_server
@@ -203,6 +213,9 @@ class GameEngine:
                 async with self.game_state_lock:
                     hit, action_possible = self.game_state.perform_action(action, player, fov, snow_number)
                     action = "gun" if action == "miss" else action
+
+                    if action == "logout":
+                        end_game_event.set()
 
                     # Prepare for eval_server
                     eval_data = self.generate_game_state(player, action)
@@ -397,6 +410,63 @@ class GameEngine:
             except Exception as e:
                 logger.error(f"Error in visualiser_state_process: {e}")
 
+    def authenticate_google_drive(self):
+        creds = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=["https://www.googleapis.com/auth/drive"])
+        return build("drive", "v3", credentials=creds)
+
+    # Upload file to Google Drive
+    async def upload_to_google_drive(self, filename, folder_id=GOOGLE_DRIVE_FOLDER_ID):
+        await asyncio.gather(
+            self.p1_end_game_event.wait(),
+            self.p2_end_game_event.wait()
+        )
+        drive_service = self.authenticate_google_drive()
+
+        for filename in self.df_buffer:
+            file_metadata = {
+                "name": filename,
+                "parents": [folder_id]  # Upload to specific folder
+            }
+            media = MediaFileUpload(filename, mimetype="text/csv")
+
+            file = drive_service.files().create(
+                body=file_metadata,
+                media_body=media,
+                fields="id"
+            ).execute()
+
+            print(f"Uploaded {filename} to Google Drive with file ID: {file.get('id')}")
+
+    # Save to CSV and Upload
+    def save_to_csv(self, df, filename):
+        """Appends data to a CSV file, creating the file if it doesn't exist, then uploads it to Google Drive."""
+        if not os.path.exists(filename):
+            df.to_csv(filename, index=False)
+        else:
+            df.to_csv(filename, mode='a', index=False, header=False)
+
+        # Upload to Google Drive
+        self.upload_to_google_drive(filename)
+
+    async def google_drive_process(self, player, bufs, predicted_data, predicted_conf):
+         async with self.count_lock:
+            max_len = len(bufs['gun_ax'])  # Assuming all lists have the same length
+            unraveled_data = []
+            for i in range(max_len):
+                row = {col: bufs[col][i] for col in self.COLUMNS}
+                unraveled_data.append(row)
+        
+            google_drive_df = pd.DataFrame(unraveled_data)
+
+            # Add predicted_data and predicted_conf to the dataframe
+            google_drive_df["Action"] = predicted_data
+            google_drive_df["Confidence"] = predicted_conf
+
+            # Save to CSV
+            if predicted_data not in ["shoot", "walk"]:
+                self.save_to_csv(google_drive_df, f"round_{(self.temporary_round + 2) // 2}_player_{player}_action_{predicted_data}.csv")
+            self.temporary_round += 1
+
     async def stop(self) -> None:
         logger.critical("Cancelling tasks...")
         for task in self.tasks:
@@ -411,8 +481,8 @@ class GameEngine:
             asyncio.create_task(self.initiate_ai_engine()),
             asyncio.create_task(self.relay_process()),
             asyncio.create_task(self.prediction_process()),
-            asyncio.create_task(self.process(player=1, event_buffer=self.p1_event_buffer, event=self.p1_event, visualiser_state=self.p1_visualiser_state, log=self.p1_logger)),
-            asyncio.create_task(self.process(player=2, event_buffer=self.p2_event_buffer, event=self.p2_event, visualiser_state=self.p2_visualiser_state, log=self.p2_logger)),
+            asyncio.create_task(self.process(player=1, event_buffer=self.p1_event_buffer, event=self.p1_event, visualiser_state=self.p1_visualiser_state, log=self.p1_logger, end_game_event=self.p1_end_game_event)),
+            asyncio.create_task(self.process(player=2, event_buffer=self.p2_event_buffer, event=self.p2_event, visualiser_state=self.p2_visualiser_state, log=self.p2_logger, end_game_event=self.p2_end_game_event)),
             asyncio.create_task(self.eval_process()),
             asyncio.create_task(self.visualiser_state_process()),
             asyncio.create_task(self.connection_process())
