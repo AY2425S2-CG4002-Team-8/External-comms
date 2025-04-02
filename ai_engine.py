@@ -1,7 +1,7 @@
 import asyncio
 from datetime import datetime
 import json
-from config import AI_ROUND_TIMEOUT, COOLDOWN_TOPIC
+from config import AI_ROUND_TIMEOUT, COOLDOWN_TOPIC, GOOGLE_DRIVE_FOLDER_ID, SERVICE_ACCOUNT_FILE
 from pynq import Overlay, allocate, PL, Clocks
 import pynq.ps
 from logger import get_logger
@@ -11,7 +11,9 @@ import joblib
 from numpy import fft
 from sklearn.preprocessing import LabelEncoder
 import os
-
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
+from google.oauth2 import service_account
 
 logger = get_logger(__name__)
 
@@ -29,6 +31,8 @@ class AiEngine:
         self.p2_read_buffer = p2_read_buffer
         self.write_buffer = write_buffer
         self.visualiser_send_buffer = visualiser_send_buffer
+
+        self.temporary_round = 0
 
         self.COLUMNS = ['gun_ax', 'gun_ay', 'gun_az', 'gun_gx', 'gun_gy', 'gun_gz', 'glove_ax', 'glove_ay', 'glove_az', 'glove_gx', 'glove_gy', 'glove_gz']
         self.bitstream_path = "/home/xilinx/capstone/FPGA-AI/mlp_trim35_unseen.bit"
@@ -190,6 +194,40 @@ class AiEngine:
         df = pd.DataFrame.from_dict(data_dictionary)
         df.to_csv(filename, index=False)  # Save without row indices
 
+    # Authenticate Google Drive API
+    def authenticate_google_drive(self):
+        creds = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=["https://www.googleapis.com/auth/drive"])
+        return build("drive", "v3", credentials=creds)
+
+    # Upload file to Google Drive
+    def upload_to_google_drive(self, filename, folder_id=GOOGLE_DRIVE_FOLDER_ID):
+        drive_service = self.authenticate_google_drive()
+
+        file_metadata = {
+            "name": filename,
+            "parents": [folder_id]  # Upload to specific folder
+        }
+        media = MediaFileUpload(filename, mimetype="text/csv")
+
+        file = drive_service.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields="id"
+        ).execute()
+
+        print(f"Uploaded {filename} to Google Drive with file ID: {file.get('id')}")
+
+    # Save to CSV and Upload
+    def save_to_csv(self, df, filename):
+        """Appends data to a CSV file, creating the file if it doesn't exist, then uploads it to Google Drive."""
+        if not os.path.exists(filename):
+            df.to_csv(filename, index=False)  # Create file with headers
+        else:
+            df.to_csv(filename, mode='a', index=False, header=False)  # Append without headers
+
+        # Upload to Google Drive
+        self.upload_to_google_drive(filename)
+
     async def predict(self, player: int, read_buffer: asyncio.Queue) -> None:
         """
         Collects self.PREDICTION_DATA_POINTS packets to form a dictionary of arrays (current implementation) for AI inference
@@ -236,6 +274,14 @@ class AiEngine:
                 predicted_conf, predicted_data = await asyncio.to_thread(self.classify, df, player)
                 predicted_data = "bomb" if predicted_data == "snowbomb" else predicted_data
                 log(f"AI Engine Prediction: {predicted_data}, Confidence: {predicted_conf}")
+
+                # Add predicted_data and predicted_conf to the dataframe
+                df["Action"] = predicted_data
+                df["Confidence"] = predicted_conf
+
+                # Save to CSV
+                if predicted_data not in ["shoot", "walk"]:
+                    self.save_to_csv(df, f"round_{(self.temporary_round + 2 ) // 2}_player_{player}_action_{predicted_data}.csv")
 
                 await self.write_buffer.put((player, predicted_data))
                 await asyncio.sleep(AI_ROUND_TIMEOUT)

@@ -30,6 +30,8 @@ MQTT_MAX_RECONNECT_ATTEMPTS=10
 AI_PACKET_TIMEOUT = 0.5
 AI_READ_BUFFER_MAX_SIZE = 35
 AI_ROUND_TIMEOUT = 3
+GOOGLE_DRIVE_FOLDER_ID = "1eWPwSNn31Q2GlSgGBBf0jjyjOGKcb0DS"
+SERVICE_ACCOUNT_FILE = "/home/xilinx/capstone/credentials/googlecreds.json"
 
 # Action Configuration
 ACTION_AVALANCHE = "avalanche"
