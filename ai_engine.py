@@ -21,7 +21,15 @@ class AiEngine:
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Engine Init~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#   
 
-    def __init__(self, p1_read_buffer: asyncio.Queue, p2_read_buffer: asyncio.Queue, write_buffer: asyncio.Queue, visualiser_send_buffer: asyncio.Queue, round):
+    def __init__(
+            self, 
+            p1_read_buffer: asyncio.Queue,
+            p2_read_buffer: asyncio.Queue, 
+            write_buffer: asyncio.Queue, 
+            visualiser_send_buffer: asyncio.Queue,
+            df_buffer: list,
+            round
+    ):
         PL.reset()
         self.MAX_PREDICTION_DATA_POINTS = 35 
         self.FEATURE_SIZE = 12
@@ -32,6 +40,7 @@ class AiEngine:
         self.write_buffer = write_buffer
         self.visualiser_send_buffer = visualiser_send_buffer
         self.round = round
+        self.df_buffer = df_buffer
 
         self.COLUMNS = ['gun_ax', 'gun_ay', 'gun_az', 'gun_gx', 'gun_gy', 'gun_gz', 'glove_ax', 'glove_ay', 'glove_az', 'glove_gx', 'glove_gy', 'glove_gz']
         self.bitstream_path = "/home/xilinx/capstone/FPGA-AI/mlp_trim35_unseen.bit"
@@ -179,41 +188,18 @@ class AiEngine:
 
         return json.dumps(cooldown_payload)
 
-    # Authenticate Google Drive API
-    def authenticate_google_drive(self):
-        creds = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=["https://www.googleapis.com/auth/drive"])
-        return build("drive", "v3", credentials=creds)
-
-    # Upload file to Google Drive
-    def upload_to_google_drive(self, filename, folder_id=GOOGLE_DRIVE_FOLDER_ID):
-        drive_service = self.authenticate_google_drive()
-
-        file_metadata = {
-            "name": filename,
-            "parents": [folder_id]  # Upload to specific folder
-        }
-        media = MediaFileUpload(filename, mimetype="text/csv")
-
-        file = drive_service.files().create(
-            body=file_metadata,
-            media_body=media,
-            fields="id"
-        ).execute()
-
-        print(f"Uploaded {filename} to Google Drive with file ID: {file.get('id')}")
-
     # Save to CSV and Upload
     def save_to_csv(self, df, filename):
         """Appends data to a CSV file, creating the file if it doesn't exist, then uploads it to Google Drive."""
         if not os.path.exists(filename):
-            df.to_csv(filename, index=False)  # Create file with headers
+            df.to_csv(filename, index=False)
         else:
-            df.to_csv(filename, mode='a', index=False, header=False)  # Append without headers
+            df.to_csv(filename, mode='a', index=False, header=False)
 
         # Upload to Google Drive
-        self.upload_to_google_drive(filename)
+        self.df_buffer.append(filename)
 
-    async def google_drive_process(self, player, bufs, predicted_data, predicted_conf):
+    async def df_buffer_push(self, player, bufs, predicted_data, predicted_conf):
          async with self.count_lock:
             max_len = len(bufs['gun_ax'])  # Assuming all lists have the same length
             unraveled_data = []
@@ -277,7 +263,7 @@ class AiEngine:
                 predicted_conf, predicted_data = await asyncio.to_thread(self.classify, df, player)
                 predicted_data = "bomb" if predicted_data == "snowbomb" else predicted_data
                 log(f"AI Engine Prediction: {predicted_data}, Confidence: {predicted_conf}")
-                await self.google_drive_process(player, bufs, predicted_data, predicted_conf)
+                await self.df_buffer_push(player, bufs, predicted_data, predicted_conf)
                 await self.write_buffer.put((player, predicted_data))
                 await asyncio.sleep(AI_ROUND_TIMEOUT)
                 await self.send_visualiser_cooldown(COOLDOWN_TOPIC, player, True)
