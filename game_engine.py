@@ -424,7 +424,7 @@ class GameEngine:
         return build("drive", "v3", credentials=creds)
 
     # Upload file to Google Drive
-    async def upload_to_google_drive(self, filename, folder_id=GOOGLE_DRIVE_FOLDER_ID):
+    async def upload_to_google_drive(self, folder_id=GOOGLE_DRIVE_FOLDER_ID):
         await asyncio.gather(
             self.p1_end_game_event.wait(),
             self.p2_end_game_event.wait()
@@ -494,7 +494,8 @@ class GameEngine:
             asyncio.create_task(self.process(player=2, event_buffer=self.p2_event_buffer, event=self.p2_event, visualiser_state=self.p2_visualiser_state, log=self.p2_logger, end_game_event=self.p2_end_game_event)),
             asyncio.create_task(self.eval_process()),
             asyncio.create_task(self.visualiser_state_process()),
-            asyncio.create_task(self.connection_process())
+            asyncio.create_task(self.connection_process()),
+            asyncio.create_task(self.google_drive_process())
         ]
         try:
             self.init_roulette()
