@@ -56,6 +56,10 @@ class GameState:
             pass
         
         return fov, action_possible
+    
+class Round:
+    def __init__(self):
+        self.round_number = 1
 
 class VisualiserState:
     """

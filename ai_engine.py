@@ -14,7 +14,6 @@ import os
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from google.oauth2 import service_account
-from game_engine import perceived_game_round
 
 logger = get_logger(__name__)
 
@@ -22,7 +21,7 @@ class AiEngine:
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Engine Init~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#   
 
-    def __init__(self, p1_read_buffer: asyncio.Queue, p2_read_buffer: asyncio.Queue, write_buffer: asyncio.Queue, visualiser_send_buffer: asyncio.Queue):
+    def __init__(self, p1_read_buffer: asyncio.Queue, p2_read_buffer: asyncio.Queue, write_buffer: asyncio.Queue, visualiser_send_buffer: asyncio.Queue, round):
         PL.reset()
         self.MAX_PREDICTION_DATA_POINTS = 35 
         self.FEATURE_SIZE = 12
@@ -32,9 +31,7 @@ class AiEngine:
         self.p2_read_buffer = p2_read_buffer
         self.write_buffer = write_buffer
         self.visualiser_send_buffer = visualiser_send_buffer
-
-        global perceived_game_round
-        self.count_lock = asyncio.Lock()
+        self.round = round
 
         self.COLUMNS = ['gun_ax', 'gun_ay', 'gun_az', 'gun_gx', 'gun_gy', 'gun_gz', 'glove_ax', 'glove_ay', 'glove_az', 'glove_gx', 'glove_gy', 'glove_gz']
         self.bitstream_path = "/home/xilinx/capstone/FPGA-AI/mlp_trim35_unseen.bit"
@@ -232,7 +229,7 @@ class AiEngine:
 
             # Save to CSV
             if predicted_data not in ["shoot", "walk"]:
-                self.save_to_csv(google_drive_df, f"round_{perceived_game_round}_player_{player}_action_{predicted_data}.csv")
+                self.save_to_csv(google_drive_df, f"round_{self.round.round_number}_player_{player}_action_{predicted_data}.csv")
 
     async def predict(self, player: int, read_buffer: asyncio.Queue) -> None:
         """

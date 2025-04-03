@@ -5,13 +5,12 @@ from eval_client import EvalClient
 from packet import GunPacket, HealthPacket, PacketFactory, IMU, HEALTH, GUN, CONN
 from relay_server import RelayServer
 from ai_engine import AiEngine
-from game_state import GameState, VisualiserState
+from game_state import GameState, Round, VisualiserState
 from config import AI_READ_BUFFER_MAX_SIZE, CONNECTION_TOPIC, EVENT_TIMEOUT, GE_SIGHT_TOPIC, GUN_TIMEOUT, SECRET_KEY, HOST, MQTT_HOST, MQTT_PORT, SEND_TOPICS, READ_TOPICS, MQTT_BASE_RECONNECT_DELAY, MQTT_MAX_RECONNECT_DELAY, MQTT_MAX_RECONNECT_ATTEMPTS, RELAY_SERVER_PORT, ACTION_TOPIC, ALL_INTERFACE
 from logger import get_logger
 import random
 
 logger = get_logger(__name__)
-perceived_game_round = 1
 
 class GameEngine:
     def __init__(self, port):
@@ -22,7 +21,7 @@ class GameEngine:
         self.game_state = GameState()
         self.p1_visualiser_state = VisualiserState()
         self.p2_visualiser_state = VisualiserState()
-        global perceived_game_round
+        self.round = Round()
 
         self.game_state_lock = asyncio.Lock()
         self.p1_event = asyncio.Event()
@@ -105,6 +104,7 @@ class GameEngine:
             p2_read_buffer=self.p2_ai_engine_read_buffer,
             write_buffer=self.ai_engine_write_buffer,
             visualiser_send_buffer=self.visualiser_send_buffer,
+            round=self.round,
         )
         logger.critical("Starting AI Engine")
         await ai_engine.run()
@@ -196,7 +196,7 @@ class GameEngine:
         while True:
             try:
                 action = await event_buffer.get()
-
+                perceived_game_round = self.round.round_number
                 if self.is_invalid(event=event, action=action, perceived_game_round=perceived_game_round):
                     log(f"Dropping action: {action} in round {perceived_game_round}, with event: {event.is_set()}")
                     await self.send_visualiser_action(ACTION_TOPIC, player, "drop", False, False, 0)
@@ -224,7 +224,7 @@ class GameEngine:
     def next_round(self) -> None:
         self.p1_event.clear()
         self.p2_event.clear()
-        perceived_game_round += 1
+        self.round.round_number += 1
 
     def update_roulette_dictionary(self, player: int, action: str) -> None:
         try:
