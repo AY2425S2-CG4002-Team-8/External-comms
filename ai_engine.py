@@ -200,22 +200,21 @@ class AiEngine:
         self.df_buffer.append(filename)
 
     async def df_buffer_push(self, player, bufs, predicted_data, predicted_conf):
-         async with self.count_lock:
-            max_len = len(bufs['gun_ax'])  # Assuming all lists have the same length
-            unraveled_data = []
-            for i in range(max_len):
-                row = {col: bufs[col][i] for col in self.COLUMNS}
-                unraveled_data.append(row)
-        
-            google_drive_df = pd.DataFrame(unraveled_data)
+        max_len = len(bufs['gun_ax'])  # Assuming all lists have the same length
+        unraveled_data = []
+        for i in range(max_len):
+            row = {col: bufs[col][i] for col in self.COLUMNS}
+            unraveled_data.append(row)
+    
+        google_drive_df = pd.DataFrame(unraveled_data)
 
-            # Add predicted_data and predicted_conf to the dataframe
-            google_drive_df["Action"] = predicted_data
-            google_drive_df["Confidence"] = predicted_conf
+        # Add predicted_data and predicted_conf to the dataframe
+        google_drive_df["Action"] = predicted_data
+        google_drive_df["Confidence"] = predicted_conf
 
-            # Save to CSV
-            if predicted_data not in ["shoot", "walk"]:
-                self.save_to_csv(google_drive_df, f"round_{self.round.round_number}_player_{player}_action_{predicted_data}.csv")
+        # Save to CSV
+        if predicted_data not in ["shoot", "walk"]:
+            self.save_to_csv(google_drive_df, f"round_{self.round.round_number}_player_{player}_action_{predicted_data}.csv")
 
     async def predict(self, player: int, read_buffer: asyncio.Queue) -> None:
         """
