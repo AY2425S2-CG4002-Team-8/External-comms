@@ -16,6 +16,7 @@ from googleapiclient.http import MediaFileUpload
 from google.oauth2 import service_account
 
 logger = get_logger(__name__)
+perceived_game_round = 1
 
 class GameEngine:
     def __init__(self, port):
