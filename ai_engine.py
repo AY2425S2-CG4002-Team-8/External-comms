@@ -14,6 +14,8 @@ import os
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from google.oauth2 import service_account
+from threading import Lock
+from datetime import datetime
 
 logger = get_logger(__name__)
 
@@ -41,6 +43,8 @@ class AiEngine:
         self.visualiser_send_buffer = visualiser_send_buffer
         self.round = round
         self.df_buffer = df_buffer
+
+        self.csv_lock = Lock()
 
         self.COLUMNS = ['gun_ax', 'gun_ay', 'gun_az', 'gun_gx', 'gun_gy', 'gun_gz', 'glove_ax', 'glove_ay', 'glove_az', 'glove_gx', 'glove_gy', 'glove_gz']
         self.bitstream_path = "/home/xilinx/capstone/FPGA-AI/mlp_trim35_unseen.bit"
@@ -188,16 +192,15 @@ class AiEngine:
 
         return json.dumps(cooldown_payload)
 
-    # Save to CSV and Upload
     def save_to_csv(self, df, filename):
-        """Appends data to a CSV file, creating the file if it doesn't exist, then uploads it to Google Drive."""
-        if not os.path.exists(filename):
-            df.to_csv(filename, index=False)
-        else:
-            df.to_csv(filename, mode='a', index=False, header=False)
+        with self.csv_lock:
+            if not os.path.exists(filename):
+                df.to_csv(filename, index=False)
+            else:
+                df.to_csv(filename, mode='a', index=False, header=False)
 
-        # Upload to Google Drive
-        self.df_buffer.append(filename)
+            # Upload to Google Drive
+            self.df_buffer.append(filename)
 
     async def df_buffer_push(self, player, bufs, predicted_data, predicted_conf):
         max_len = len(bufs['gun_ax'])  # Assuming all lists have the same length
@@ -214,7 +217,7 @@ class AiEngine:
 
         # Save to CSV
         if predicted_data not in ["shoot", "walk"]:
-            self.save_to_csv(google_drive_df, f"round_{self.round.round_number}_player_{player}_action_{predicted_data}.csv")
+            self.save_to_csv(google_drive_df, f"round_{self.round.round_number}_player_{player}_action_{predicted_data}_time_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv")
 
     async def predict(self, player: int, read_buffer: asyncio.Queue) -> None:
         """
