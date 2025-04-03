@@ -11,6 +11,7 @@ from config import AI_READ_BUFFER_MAX_SIZE, CONNECTION_TOPIC, EVENT_TIMEOUT, GE_
 from logger import get_logger
 import random
 import os
+import pandas as pd
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from google.oauth2 import service_account
@@ -457,25 +458,6 @@ class GameEngine:
         # Upload to Google Drive
         self.upload_to_google_drive(filename)
 
-    async def google_drive_process(self, player, bufs, predicted_data, predicted_conf):
-         async with self.count_lock:
-            max_len = len(bufs['gun_ax'])  # Assuming all lists have the same length
-            unraveled_data = []
-            for i in range(max_len):
-                row = {col: bufs[col][i] for col in self.COLUMNS}
-                unraveled_data.append(row)
-        
-            google_drive_df = pd.DataFrame(unraveled_data)
-
-            # Add predicted_data and predicted_conf to the dataframe
-            google_drive_df["Action"] = predicted_data
-            google_drive_df["Confidence"] = predicted_conf
-
-            # Save to CSV
-            if predicted_data not in ["shoot", "walk"]:
-                self.save_to_csv(google_drive_df, f"round_{(self.temporary_round + 2) // 2}_player_{player}_action_{predicted_data}.csv")
-            self.temporary_round += 1
-
     async def stop(self) -> None:
         logger.critical("Cancelling tasks...")
         for task in self.tasks:
@@ -495,7 +477,7 @@ class GameEngine:
             asyncio.create_task(self.eval_process()),
             asyncio.create_task(self.visualiser_state_process()),
             asyncio.create_task(self.connection_process()),
-            asyncio.create_task(self.google_drive_process())
+            asyncio.create_task(self.upload_to_google_drive())
         ]
         try:
             self.init_roulette()
