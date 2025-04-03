@@ -115,6 +115,7 @@ class GameEngine:
             write_buffer=self.ai_engine_write_buffer,
             visualiser_send_buffer=self.visualiser_send_buffer,
             round=self.round,
+            df_buffer=self.df_buffer
         )
         logger.critical("Starting AI Engine")
         await ai_engine.run()
