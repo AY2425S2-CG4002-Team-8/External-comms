@@ -114,7 +114,10 @@ class GameEngine:
             player = packet.player
             if packet.type == GUN:
                 logger.info(f"GUN PACKET Received")
-                await self.event_buffer.put((player, "gun"))
+                if player == 1:
+                    await self.p1_event_buffer.put("gun")
+                else:
+                    await self.p2_event_buffer.put("gun")
             elif packet.type == IMU:
                 logger.info(f"IMU PACKET Received")
                 try:
