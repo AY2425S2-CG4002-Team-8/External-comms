@@ -11,6 +11,7 @@ from logger import get_logger
 import random
 
 logger = get_logger(__name__)
+perceived_game_round = 1
 
 class GameEngine:
     def __init__(self, port):
@@ -21,7 +22,7 @@ class GameEngine:
         self.game_state = GameState()
         self.p1_visualiser_state = VisualiserState()
         self.p2_visualiser_state = VisualiserState()
-        self.perceived_game_round = 1
+        global perceived_game_round
 
         self.game_state_lock = asyncio.Lock()
         self.p1_event = asyncio.Event()
@@ -196,8 +197,8 @@ class GameEngine:
             try:
                 action = await event_buffer.get()
 
-                if self.is_invalid(event=event, action=action, perceived_game_round=self.perceived_game_round):
-                    log(f"Dropping action: {action} in round {self.perceived_game_round}, with event: {event.is_set()}")
+                if self.is_invalid(event=event, action=action, perceived_game_round=perceived_game_round):
+                    log(f"Dropping action: {action} in round {perceived_game_round}, with event: {event.is_set()}")
                     await self.send_visualiser_action(ACTION_TOPIC, player, "drop", False, False, 0)
                     continue
 
@@ -211,7 +212,7 @@ class GameEngine:
                     eval_data = self.generate_game_state(player, action)
                     await self.eval_client_send_buffer.put(eval_data)
                     event.set()
-                    log(f"ROUND: {self.perceived_game_round}. Sending eval data for player {player} with FOV: {hit}, ACTION_POSSIBLE: {action_possible} and SNOW_NUMBER: {snow_number} to eval_server: {eval_data}")
+                    log(f"ROUND: {perceived_game_round}. Sending eval data for player {player} with FOV: {hit}, ACTION_POSSIBLE: {action_possible} and SNOW_NUMBER: {snow_number} to eval_server: {eval_data}")
 
                 await self.send_visualiser_action(ACTION_TOPIC, player, action, hit, action_possible, snow_number)
                 self.update_roulette_dictionary(player, action)
@@ -223,7 +224,7 @@ class GameEngine:
     def next_round(self) -> None:
         self.p1_event.clear()
         self.p2_event.clear()
-        self.perceived_game_round += 1
+        perceived_game_round += 1
 
     def update_roulette_dictionary(self, player: int, action: str) -> None:
         try:

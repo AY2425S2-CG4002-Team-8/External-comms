@@ -14,6 +14,7 @@ import os
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from google.oauth2 import service_account
+from game_engine import perceived_game_round
 
 logger = get_logger(__name__)
 
@@ -32,7 +33,7 @@ class AiEngine:
         self.write_buffer = write_buffer
         self.visualiser_send_buffer = visualiser_send_buffer
 
-        self.temporary_round = 0
+        global perceived_game_round
         self.count_lock = asyncio.Lock()
 
         self.COLUMNS = ['gun_ax', 'gun_ay', 'gun_az', 'gun_gx', 'gun_gy', 'gun_gz', 'glove_ax', 'glove_ay', 'glove_az', 'glove_gx', 'glove_gy', 'glove_gz']
@@ -231,8 +232,7 @@ class AiEngine:
 
             # Save to CSV
             if predicted_data not in ["shoot", "walk"]:
-                self.save_to_csv(google_drive_df, f"round_{(self.temporary_round + 2) // 2}_player_{player}_action_{predicted_data}.csv")
-            self.temporary_round += 1
+                self.save_to_csv(google_drive_df, f"round_{perceived_game_round}_player_{player}_action_{predicted_data}.csv")
 
     async def predict(self, player: int, read_buffer: asyncio.Queue) -> None:
         """
