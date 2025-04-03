@@ -217,7 +217,8 @@ class AiEngine:
 
         # Save to CSV
         if predicted_data not in ["shoot", "walk"]:
-            self.save_to_csv(google_drive_df, f"round_{self.round.round_number}_player_{player}_action_{predicted_data}_time_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv")
+            time = datetime.now().strftime("%Y%m%d_%H%M%S")
+            self.save_to_csv(google_drive_df, f"round_{self.round.round_number}_player_{player}_action_{predicted_data}_time_{time}.csv")
 
     async def predict(self, player: int, read_buffer: asyncio.Queue) -> None:
         """
