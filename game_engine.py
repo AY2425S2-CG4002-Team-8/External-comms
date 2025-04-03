@@ -7,7 +7,7 @@ from packet import GunPacket, HealthPacket, PacketFactory, IMU, HEALTH, GUN, CON
 from relay_server import RelayServer
 from ai_engine import AiEngine
 from game_state import GameState, Round, VisualiserState
-from config import AI_READ_BUFFER_MAX_SIZE, CONNECTION_TOPIC, EVENT_TIMEOUT, GE_SIGHT_TOPIC, GUN_TIMEOUT, SECRET_KEY, HOST, MQTT_HOST, MQTT_PORT, SEND_TOPICS, READ_TOPICS, MQTT_BASE_RECONNECT_DELAY, MQTT_MAX_RECONNECT_DELAY, MQTT_MAX_RECONNECT_ATTEMPTS, RELAY_SERVER_PORT, ACTION_TOPIC, ALL_INTERFACE
+from config import AI_READ_BUFFER_MAX_SIZE, CONNECTION_TOPIC, EVENT_TIMEOUT, GE_SIGHT_TOPIC, GOOGLE_DRIVE_FOLDER_ID, GUN_TIMEOUT, SECRET_KEY, HOST, MQTT_HOST, MQTT_PORT, SEND_TOPICS, READ_TOPICS, MQTT_BASE_RECONNECT_DELAY, MQTT_MAX_RECONNECT_DELAY, MQTT_MAX_RECONNECT_ATTEMPTS, RELAY_SERVER_PORT, ACTION_TOPIC, ALL_INTERFACE, SERVICE_ACCOUNT_FILE
 from logger import get_logger
 import random
 import os
@@ -209,6 +209,8 @@ class GameEngine:
             try:
                 action = await event_buffer.get()
                 perceived_game_round = self.round.round_number
+                if perceived_game_round >= 22:
+                    action = "logout"
                 if self.is_invalid(event=event, action=action, perceived_game_round=perceived_game_round):
                     log(f"Dropping action: {action} in round {perceived_game_round}, with event: {event.is_set()}")
                     await self.send_visualiser_action(ACTION_TOPIC, player, "drop", False, False, 0)
@@ -222,6 +224,7 @@ class GameEngine:
 
                     if action == "logout":
                         end_game_event.set()
+                        logger.critical(f"Player {player} has logged out. Setting end game event.")
 
                     # Prepare for eval_server
                     eval_data = self.generate_game_state(player, action)
