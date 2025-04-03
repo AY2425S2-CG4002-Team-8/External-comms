@@ -114,6 +114,7 @@ class GameEngine:
             p2_read_buffer=self.p2_ai_engine_read_buffer,
             write_buffer=self.ai_engine_write_buffer,
             visualiser_send_buffer=self.visualiser_send_buffer,
+            df_buffer=self.df_buffer
         )
         logger.critical("Starting AI Engine")
         await ai_engine.run()
