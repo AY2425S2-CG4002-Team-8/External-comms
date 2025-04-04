@@ -197,7 +197,7 @@ class GameEngine:
                 logger.error(f"Error in prediction process: {e}")
     
     def is_invalid(self, event: asyncio.Event, action: str, perceived_game_round: int) -> bool:
-        if event.is_set() or (perceived_game_round < 22 and action == "logout"):
+        if event.is_set():
             return True
         return action in ["shoot", "walk"]
     
@@ -210,8 +210,7 @@ class GameEngine:
             try:
                 action = await event_buffer.get()
                 perceived_game_round = self.round.round_number
-                if perceived_game_round >= 22:
-                    action = "logout"
+
                 if self.is_invalid(event=event, action=action, perceived_game_round=perceived_game_round):
                     log(f"Dropping action: {action} in round {perceived_game_round}, with event: {event.is_set()}")
                     await self.send_visualiser_action(ACTION_TOPIC, player, "drop", False, False, 0)
