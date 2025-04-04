@@ -216,7 +216,7 @@ class AiEngine:
         google_drive_df["Confidence"] = predicted_conf
 
         # Save to CSV
-        if predicted_data not in ["shoot", "walk"]:
+        if predicted_data != "walk":
             time = datetime.now().strftime("%Y%m%d_%H%M%S")
             self.save_to_csv(google_drive_df, f"round_{self.round.round_number}_player_{player}_action_{predicted_data}_time_{time}.csv")
 

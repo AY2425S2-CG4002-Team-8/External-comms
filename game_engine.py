@@ -274,7 +274,8 @@ class GameEngine:
                     
                 if not self.p1_event.is_set():
                     logger.error("P2 event is not set, continuing...")
-                    await self.eval_client_send_buffer.put(self.generate_game_state(1, self.russian_roulette(1)))
+                    if self.round.round_number > 1:
+                        await self.eval_client_send_buffer.put(self.generate_game_state(1, self.russian_roulette(1)))
 
                 # Double await to clear both flags after both updates received
                 eval_game_state = await self.eval_client_read_buffer.get()
@@ -283,7 +284,8 @@ class GameEngine:
 
                 if not self.p2_event.is_set():
                     logger.error("P1 event is not set, continuing...")
-                    await self.eval_client_send_buffer.put(self.generate_game_state(2, self.russian_roulette(2)))
+                    if self.round.round_number > 1:
+                        await self.eval_client_send_buffer.put(self.generate_game_state(2, self.russian_roulette(2)))
 
                 eval_game_state = await self.eval_client_read_buffer.get()
                 logger.critical(f"Received SECOND game state from eval_server = {eval_game_state}")
