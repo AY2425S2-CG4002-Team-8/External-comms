@@ -1,7 +1,7 @@
 import asyncio
 from datetime import datetime
 import json
-from config import AI_ROUND_TIMEOUT, COOLDOWN_TOPIC, GOOGLE_DRIVE_FOLDER_ID, SERVICE_ACCOUNT_FILE
+from config import AI_MINIMUM_PACKETS, AI_ROUND_TIMEOUT, COOLDOWN_TOPIC, GOOGLE_DRIVE_FOLDER_ID, SERVICE_ACCOUNT_FILE
 from pynq import Overlay, allocate, PL, Clocks
 import pynq.ps
 from logger import get_logger
@@ -249,14 +249,13 @@ class AiEngine:
                         bufs['glove_gy'].append(packet.glove_gy)
                         bufs['glove_gz'].append(packet.glove_gz)
                         packets += 1
-                        side = "RIGHT" if packet.side == 0 else "LEFT"
-                        log(f"IMU packet Received on AI: {i+1}, with sequence number {packet.seq}, SIDE = {side}")
+                        log(f"IMU packet Received on AI: {i+1}, with sequence number {packet.seq}")
 
                     except asyncio.TimeoutError:
                         break
 
                 # If data buffer is < threshold, we skip processing and continue to the next iteration
-                if packets < 10:
+                if packets < AI_MINIMUM_PACKETS:
                     log(f"{packets} packets received. Skipping prediction")
                     continue
                 
