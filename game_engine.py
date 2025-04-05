@@ -169,7 +169,7 @@ class GameEngine:
         while True:
             try:
                 connection_packet = await self.connection_buffer.get()
-                player, device, first_conn = connection_packet.player, connection_packet.device, connection_packet.first_conn
+                player, device, first_conn, status = connection_packet.player, connection_packet.device, connection_packet.first_conn, connection_packet.status
                 if first_conn:
                     await self.send_relay_node()
                 if device == 12:
@@ -178,7 +178,7 @@ class GameEngine:
                     device = "glove"
                 elif device == 14:
                     device = "vest"
-                await self.send_visualiser_connection(CONNECTION_TOPIC, player, device)
+                await self.send_visualiser_connection(CONNECTION_TOPIC, player, device, status)
             except Exception as e:
                 logger.error(f"Error in connection_process: {e}")
                 
@@ -308,18 +308,19 @@ class GameEngine:
 
         return action
     
-    async def send_visualiser_connection(self, topic: str, player: int, device: str) -> None:
-        message = self.generate_connection_mqtt_message(player, device)
+    async def send_visualiser_connection(self, topic: str, player: int, device: str, status: int) -> None:
+        message = self.generate_connection_mqtt_message(player, device, status)
         await self.visualiser_send_buffer.put((topic, message))
 
     async def send_visualiser_action(self, topic: str, player: int, action: str, hit: bool, action_possible: bool, avalanche_count: int) -> None:
         message = self.generate_action_mqtt_message(player, action, hit, action_possible, avalanche_count)
         await self.visualiser_send_buffer.put((topic, message))
 
-    def generate_connection_mqtt_message(self, player: int, device: str) -> json:
+    def generate_connection_mqtt_message(self, player: int, device: str, status: int) -> json:
         connection_payload = {
             'player': player,
             'device': device,
+            'status': status
         }
 
         return json.dumps(connection_payload)
