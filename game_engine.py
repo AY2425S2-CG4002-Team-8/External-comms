@@ -6,7 +6,7 @@ from eval_client import EvalClient
 from packet import GunPacket, HealthPacket, PacketFactory, IMU, HEALTH, GUN, CONN
 from relay_server import RelayServer
 from ai_engine import AiEngine
-from game_state import GameState, Round, VisualiserState
+from game_state import GameState, VisualiserState
 from config import AI_READ_BUFFER_MAX_SIZE, CONNECTION_TOPIC, EVENT_TIMEOUT, GE_SIGHT_TOPIC, GOOGLE_DRIVE_FOLDER_ID, GUN_TIMEOUT, SECRET_KEY, HOST, MQTT_HOST, MQTT_PORT, SEND_TOPICS, READ_TOPICS, MQTT_BASE_RECONNECT_DELAY, MQTT_MAX_RECONNECT_DELAY, MQTT_MAX_RECONNECT_ATTEMPTS, RELAY_SERVER_PORT, ACTION_TOPIC, ALL_INTERFACE, SERVICE_ACCOUNT_FILE
 from logger import get_logger
 import random
@@ -17,7 +17,6 @@ from googleapiclient.http import MediaFileUpload
 from google.oauth2 import service_account
 
 logger = get_logger(__name__)
-perceived_game_round = 1
 
 class GameEngine:
     def __init__(self, port):
@@ -28,11 +27,11 @@ class GameEngine:
         self.game_state = GameState()
         self.p1_visualiser_state = VisualiserState()
         self.p2_visualiser_state = VisualiserState()
-        self.round = Round()
 
         self.game_state_lock = asyncio.Lock()
         self.p1_event = asyncio.Event()
         self.p2_event = asyncio.Event()
+        self.perceived_game_round = 1
 
         self.eval_client_read_buffer = asyncio.Queue()
         self.eval_client_send_buffer = asyncio.Queue()
@@ -43,13 +42,7 @@ class GameEngine:
         self.p1_ai_engine_read_buffer = asyncio.Queue(AI_READ_BUFFER_MAX_SIZE)
         self.p2_ai_engine_read_buffer = asyncio.Queue(AI_READ_BUFFER_MAX_SIZE)
         self.ai_engine_write_buffer = asyncio.Queue()
-        self.connection_buffer = asyncio.Queue()
-        self.p1_gun_buffer = asyncio.Queue()
-        self.p1_health_buffer = asyncio.Queue()
-        self.p2_gun_buffer = asyncio.Queue()
-        self.p2_health_buffer = asyncio.Queue()
-        self.p1_event_buffer = asyncio.Queue()
-        self.p2_event_buffer = asyncio.Queue()
+        self.event_buffer = asyncio.Queue()
 
         self.p1_logger = logger.ge_p1
         self.p2_logger = logger.ge_p2
@@ -58,7 +51,6 @@ class GameEngine:
         self.roulette_dictionary = {}
 
 
-        self.df_buffer = []
         self.p1_end_game_event = asyncio.Event()
         self.p2_end_game_event = asyncio.Event()
 
@@ -116,8 +108,6 @@ class GameEngine:
             p2_read_buffer=self.p2_ai_engine_read_buffer,
             write_buffer=self.ai_engine_write_buffer,
             visualiser_send_buffer=self.visualiser_send_buffer,
-            round=self.round,
-            df_buffer=self.df_buffer
         )
         logger.critical("Starting AI Engine")
         await ai_engine.run()
@@ -128,10 +118,7 @@ class GameEngine:
             player = packet.player
             if packet.type == GUN:
                 logger.info(f"GUN PACKET Received")
-                if player == 1:
-                    await self.p1_event_buffer.put("gun")
-                else:
-                    await self.p2_event_buffer.put("gun")
+                await self.event_buffer.put((player, "gun"))
             elif packet.type == IMU:
                 logger.info(f"IMU PACKET Received")
                 try:
@@ -190,48 +177,45 @@ class GameEngine:
             try:
                 player, predicted_data = await self.ai_engine_write_buffer.get()
                 if player == 1:
-                    await self.p1_event_buffer.put(predicted_data)
+                    await self.event_buffer.put((player, predicted_data, self.p1_event, self.p1_logger))
                 else:
-                    await self.p2_event_buffer.put(predicted_data)
+                    await self.event_buffer.put((player, predicted_data, self.p2_event, self.p2_logger))
             except Exception as e:
                 logger.error(f"Error in prediction process: {e}")
     
-    def is_invalid(self, event: asyncio.Event, action: str, perceived_game_round: int) -> bool:
-        if event.is_set():
+    def is_invalid(self, event: asyncio.Event, action: str) -> bool:
+        if event.is_set() or (self.perceived_game_round < 22 and action == "logout"):
             return True
         return action in ["shoot", "walk"]
     
-    async def process(self, player: int, event_buffer: asyncio.Queue, event: asyncio.Event, visualiser_state, log, end_game_event: asyncio.Event) -> None:
+    async def process(self) -> None:
         """
         Sends action (gun or AI) to visualiser, followed by the avalanche damage if any.
         Updates game state accordingly and puts into eval_client_send_buffer to queue sending to eval_server
         """
         while True:
             try:
-                action = await event_buffer.get()
-                perceived_game_round = self.round.round_number
+                # event_buffer: (player: int, action: str)
+                player, action, event, log = await self.event_buffer.get()
 
-                if self.is_invalid(event=event, action=action, perceived_game_round=perceived_game_round):
-                    log(f"Dropping action: {action} in round {perceived_game_round}, with event: {event.is_set()}")
+                if self.is_invalid(event=event, action=action):
+                    log(f"Dropping action: {action} in round {self.perceived_game_round}, with event: {event.is_set()}")
                     await self.send_visualiser_action(ACTION_TOPIC, player, "drop", False, False, 0)
                     continue
 
+                visualiser_state = self.p1_visualiser_state if player == 1 else self.p2_visualiser_state
                 fov, snow_number = visualiser_state.get_fov(), visualiser_state.get_snow_number()
 
-                async with self.game_state_lock:
-                    hit, action_possible = self.game_state.perform_action(action, player, fov, snow_number)
-                    action = "gun" if action == "miss" else action
+                hit, action_possible = self.game_state.perform_action(action, player, fov, snow_number)
 
-                    if action == "logout":
-                        end_game_event.set()
-                        logger.critical(f"Player {player} has logged out. Setting end game event.")
+                action = "gun" if action == "miss" else action
 
-                    # Prepare for eval_server
-                    eval_data = self.generate_game_state(player, action)
-                    await self.eval_client_send_buffer.put(eval_data)
-                    event.set()
-                    log(f"ROUND: {perceived_game_round}. Sending eval data for player {player} with FOV: {hit}, ACTION_POSSIBLE: {action_possible} and SNOW_NUMBER: {snow_number} to eval_server: {eval_data}")
+                # Prepare for eval_server
+                eval_data = self.generate_game_state(player, action)
+                await self.eval_client_send_buffer.put(eval_data)
+                log(f"ROUND: {self.perceived_game_round}. Sending eval data for player {player} with FOV: {hit}, ACTION_POSSIBLE: {action_possible} and SNOW_NUMBER: {snow_number} to eval_server: {eval_data}")
 
+                event.set()
                 await self.send_visualiser_action(ACTION_TOPIC, player, action, hit, action_possible, snow_number)
                 self.update_roulette_dictionary(player, action)
                 
@@ -242,7 +226,7 @@ class GameEngine:
     def next_round(self) -> None:
         self.p1_event.clear()
         self.p2_event.clear()
-        self.round.round_number += 1
+        self.perceived_game_round += 1
 
     def update_roulette_dictionary(self, player: int, action: str) -> None:
         try:
@@ -274,7 +258,7 @@ class GameEngine:
                     
                 if not self.p1_event.is_set():
                     logger.error("P2 event is not set, continuing...")
-                    if self.round.round_number > 1:
+                    if self.perceived_game_round > 1:
                         await self.eval_client_send_buffer.put(self.generate_game_state(1, self.russian_roulette(1)))
 
                 # Double await to clear both flags after both updates received
@@ -284,7 +268,7 @@ class GameEngine:
 
                 if not self.p2_event.is_set():
                     logger.error("P1 event is not set, continuing...")
-                    if self.round.round_number > 1:
+                    if self.perceived_game_round > 1:
                         await self.eval_client_send_buffer.put(self.generate_game_state(2, self.russian_roulette(2)))
 
                 eval_game_state = await self.eval_client_read_buffer.get()
@@ -422,50 +406,6 @@ class GameEngine:
             except Exception as e:
                 logger.error(f"Error in visualiser_state_process: {e}")
 
-    def authenticate_google_drive(self):
-        creds = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=["https://www.googleapis.com/auth/drive"])
-        return build("drive", "v3", credentials=creds)
-
-    # Upload file to Google Drive
-    async def upload_to_google_drive(self, folder_id=GOOGLE_DRIVE_FOLDER_ID):
-        await asyncio.gather(
-            self.p1_end_game_event.wait(),
-            self.p2_end_game_event.wait()
-        )
-        drive_service = self.authenticate_google_drive()
-
-        for filename in self.df_buffer:
-            file_metadata = {
-                "name": filename,
-                "parents": [folder_id]  # Upload to specific folder
-            }
-            media = MediaFileUpload(filename, mimetype="text/csv")
-
-            file = drive_service.files().create(
-                body=file_metadata,
-                media_body=media,
-                fields="id"
-            ).execute()
-
-            print(f"Uploaded {filename} to Google Drive with file ID: {file.get('id')}")
-
-    # Save to CSV and Upload
-    def save_to_csv(self, df, filename):
-        """Appends data to a CSV file, creating the file if it doesn't exist, then uploads it to Google Drive."""
-        if not os.path.exists(filename):
-            df.to_csv(filename, index=False)
-        else:
-            df.to_csv(filename, mode='a', index=False, header=False)
-
-        # Upload to Google Drive
-        self.upload_to_google_drive(filename)
-
-    async def stop(self) -> None:
-        logger.critical("Cancelling tasks...")
-        for task in self.tasks:
-            task.cancel()
-        await asyncio.gather(*self.tasks, return_exceptions=True)
-
     async def start(self) -> None:
         self.tasks = [
             asyncio.create_task(self.initiate_mqtt()),
@@ -479,7 +419,6 @@ class GameEngine:
             asyncio.create_task(self.eval_process()),
             asyncio.create_task(self.visualiser_state_process()),
             asyncio.create_task(self.connection_process()),
-            asyncio.create_task(self.upload_to_google_drive())
         ]
         try:
             self.init_roulette()

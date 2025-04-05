@@ -29,8 +29,6 @@ class AiEngine:
             p2_read_buffer: asyncio.Queue, 
             write_buffer: asyncio.Queue, 
             visualiser_send_buffer: asyncio.Queue,
-            df_buffer: list,
-            round
     ):
         PL.reset()
         self.MAX_PREDICTION_DATA_POINTS = 35 
@@ -41,10 +39,6 @@ class AiEngine:
         self.p2_read_buffer = p2_read_buffer
         self.write_buffer = write_buffer
         self.visualiser_send_buffer = visualiser_send_buffer
-        self.round = round
-        self.df_buffer = df_buffer
-
-        self.csv_lock = Lock()
 
         self.COLUMNS = ['gun_ax', 'gun_ay', 'gun_az', 'gun_gx', 'gun_gy', 'gun_gz', 'glove_ax', 'glove_ay', 'glove_az', 'glove_gx', 'glove_gy', 'glove_gz']
         self.bitstream_path = "/home/xilinx/capstone/FPGA-AI/mlp_trim35_eval.bit"
@@ -192,34 +186,6 @@ class AiEngine:
 
         return json.dumps(cooldown_payload)
 
-    def save_to_csv(self, df, filename):
-        with self.csv_lock:
-            if not os.path.exists(filename):
-                df.to_csv(filename, index=False)
-            else:
-                df.to_csv(filename, mode='a', index=False, header=False)
-
-            # Upload to Google Drive
-            self.df_buffer.append(filename)
-
-    async def df_buffer_push(self, player, bufs, predicted_data, predicted_conf):
-        max_len = len(bufs['gun_ax'])  # Assuming all lists have the same length
-        unraveled_data = []
-        for i in range(max_len):
-            row = {col: bufs[col][i] for col in self.COLUMNS}
-            unraveled_data.append(row)
-    
-        google_drive_df = pd.DataFrame(unraveled_data)
-
-        # Add predicted_data and predicted_conf to the dataframe
-        google_drive_df["Action"] = predicted_data
-        google_drive_df["Confidence"] = predicted_conf
-
-        # Save to CSV
-        if predicted_data != "walk":
-            time = datetime.now().strftime("%Y%m%d_%H%M%S")
-            self.save_to_csv(google_drive_df, f"round_{self.round.round_number}_player_{player}_action_{predicted_data}_time_{time}.csv")
-
     async def predict(self, player: int, read_buffer: asyncio.Queue) -> None:
         """
         Collects self.PREDICTION_DATA_POINTS packets to form a dictionary of arrays (current implementation) for AI inference
@@ -265,7 +231,7 @@ class AiEngine:
                 predicted_conf, predicted_data = await asyncio.to_thread(self.classify, df, player)
                 predicted_data = "bomb" if predicted_data == "snowbomb" else predicted_data
                 log(f"AI Engine Prediction: {predicted_data}, Confidence: {predicted_conf}")
-                await self.df_buffer_push(player, bufs, predicted_data, predicted_conf)
+
                 await self.write_buffer.put((player, predicted_data))
                 await asyncio.sleep(AI_ROUND_TIMEOUT)
                 await self.send_visualiser_cooldown(COOLDOWN_TOPIC, player, True)
