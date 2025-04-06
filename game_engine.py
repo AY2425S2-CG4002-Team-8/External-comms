@@ -43,6 +43,7 @@ class GameEngine:
         self.p2_ai_engine_read_buffer = asyncio.Queue(AI_READ_BUFFER_MAX_SIZE)
         self.ai_engine_write_buffer = asyncio.Queue()
         self.event_buffer = asyncio.Queue()
+        self.connection_buffer = asyncio.Queue()
 
         self.p1_logger = logger.ge_p1
         self.p2_logger = logger.ge_p2
