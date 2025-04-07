@@ -420,7 +420,7 @@ class GameEngine:
             asyncio.create_task(self.relay_process()),
             asyncio.create_task(self.prediction_process()),
             asyncio.create_task(self.process()),
-            asyncio.create_task(self.eval_process()),
+            # asyncio.create_task(self.eval_process()),
             asyncio.create_task(self.visualiser_state_process()),
             asyncio.create_task(self.connection_process()),
         ]
