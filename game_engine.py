@@ -264,7 +264,8 @@ class GameEngine:
                     logger.warning("Event flag timeout occurred, proceeding without waiting.")
                 
                 while not self.eval_client_read_buffer.empty():
-                    eval_game_state = await self.eval_client_read_buffer.get()
+                    eval_game_state = self.eval_client_read_buffer.get_nowait()
+                    logger.critical(f"Received eval game state: {eval_game_state}")
                     self.update_game_state(eval_game_state)
 
                 # Propagate the final game state to visualiser with ignored action and hit
