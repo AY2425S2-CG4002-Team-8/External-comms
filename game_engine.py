@@ -263,9 +263,14 @@ class GameEngine:
                 except asyncio.TimeoutError:
                     logger.warning("Event flag timeout occurred, proceeding without waiting.")
                 
-                while not self.eval_client_read_buffer.empty():
-                    eval_game_state = self.eval_client_read_buffer.get_nowait()
-                    logger.critical(f"Received eval game state: {eval_game_state}")
+                if self.p1_event.is_set():
+                    eval_game_state = await self.eval_client_read_buffer.get()
+                    logger.critical(f"Received FIRST game state from eval_server = {eval_game_state}")
+                    self.update_game_state(eval_game_state)
+
+                if self.p2_event.is_set():
+                    eval_game_state = await self.eval_client_read_buffer.get()
+                    logger.critical(f"Received SECOND game state from eval_server = {eval_game_state}")
                     self.update_game_state(eval_game_state)
 
                 # Propagate the final game state to visualiser with ignored action and hit
