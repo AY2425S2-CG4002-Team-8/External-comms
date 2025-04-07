@@ -29,9 +29,9 @@ class GameEngine:
         self.p1_visualiser_state = VisualiserState()
         self.p2_visualiser_state = VisualiserState()
 
-        self.game_state_lock = asyncio.Lock()
-        self.p1_event = asyncio.Event()
-        self.p2_event = asyncio.Event()
+        # self.game_state_lock = asyncio.Lock()
+        # self.p1_event = asyncio.Event()
+        # self.p2_event = asyncio.Event()
         self.perceived_game_round = 1
 
         self.eval_client_read_buffer = asyncio.Queue()
@@ -191,7 +191,7 @@ class GameEngine:
                 logger.error(f"Error in prediction process: {e}")
     
     def is_invalid(self, player: int, action: str) -> bool:
-        if datetime.now() - self.last_send_dictionary[player] < timedelta(seconds=3) or (self.perceived_game_round < 22 and action == "logout"):
+        if (datetime.now() - self.last_send_dictionary[player] < timedelta(seconds=3)):
             return True
         return action in ["shoot", "walk"]
     
@@ -206,7 +206,7 @@ class GameEngine:
                 player, action, event, log = await self.event_buffer.get()
 
                 if self.is_invalid(player=player, action=action):
-                    log(f"Dropping action: {action} in round {self.perceived_game_round}, with event: {event.is_set()}")
+                    log(f"Dropping action: {action} in round {self.perceived_game_round}")
                     await self.send_visualiser_action(ACTION_TOPIC, player, "drop", False, False, 0)
                     continue
 
@@ -219,21 +219,28 @@ class GameEngine:
                 # Prepare for eval_server
                 eval_data = self.generate_game_state(player, action)
                 self.last_send_dictionary[player] = datetime.now()
-                await self.eval_client_send_buffer.put(eval_data)
-                log(f"ROUND: {self.perceived_game_round}. Sending eval data for player {player} with FOV: {hit}, ACTION_POSSIBLE: {action_possible} and SNOW_NUMBER: {snow_number} to eval_server: {eval_data}")
 
-                event.set()
+                await self.eval_client_send_buffer.put(eval_data)
                 await self.send_visualiser_action(ACTION_TOPIC, player, action, hit, action_possible, snow_number)
+                log(f"ROUND: {self.perceived_game_round}. Sending eval data for player {player} with FOV: {hit}, ACTION_POSSIBLE: {action_possible} and SNOW_NUMBER: {snow_number} to eval_server: {eval_data}")
+                eval_game_state = await self.eval_client_read_buffer.get()
+                log(f"Received game state from eval_server = {eval_game_state}")
+                self.update_game_state(eval_game_state)
+                # event.set()
+                
+                mqtt_message = self.generate_action_mqtt_message(0, None, None, None, None)
+                await self.visualiser_send_buffer.put((ACTION_TOPIC, mqtt_message))
+                await self.send_relay_node()
                 # self.update_roulette_dictionary(player, action)
                 
             except Exception as e:
                 logger.error(f"Exception in process: {e}")
                 raise
 
-    def next_round(self) -> None:
-        self.p1_event.clear()
-        self.p2_event.clear()
-        self.perceived_game_round += 1
+    # def next_round(self) -> None:
+    #     self.p1_event.clear()
+    #     self.p2_event.clear()
+    #     self.perceived_game_round += 1
 
     # def update_roulette_dictionary(self, player: int, action: str) -> None:
     #     try:
@@ -245,43 +252,43 @@ class GameEngine:
     #     except:
     #         logger.error(f"Error in update rolette dictionary: {e}")
 
-    async def eval_process(self) -> None:
-        """
-        Listens to eval_client_read_buffer for eval_server updates
-        Puts updated game state into relay_server and visualiser send_buffers to update
-        """ 
-        while True:
-            try:
-                try:
-                    await asyncio.wait_for(
-                        asyncio.gather(
-                            self.p1_event.wait(),
-                            self.p2_event.wait()
-                        ),
-                        timeout=EVENT_TIMEOUT 
-                    )
-                except asyncio.TimeoutError:
-                    logger.warning("Event flag timeout occurred, proceeding without waiting.")
+    # async def eval_process(self) -> None:
+    #     """
+    #     Listens to eval_client_read_buffer for eval_server updates
+    #     Puts updated game state into relay_server and visualiser send_buffers to update
+    #     """ 
+    #     while True:
+    #         try:
+    #             try:
+    #                 await asyncio.wait_for(
+    #                     asyncio.gather(
+    #                         self.p1_event.wait(),
+    #                         self.p2_event.wait()
+    #                     ),
+    #                     timeout=EVENT_TIMEOUT 
+    #                 )
+    #             except asyncio.TimeoutError:
+    #                 logger.warning("Event flag timeout occurred, proceeding without waiting.")
                 
-                if self.p1_event.is_set():
-                    eval_game_state = await self.eval_client_read_buffer.get()
-                    logger.critical(f"Received FIRST game state from eval_server = {eval_game_state}")
-                    self.update_game_state(eval_game_state)
+    #             if self.p1_event.is_set():
+    #                 eval_game_state = await self.eval_client_read_buffer.get()
+    #                 logger.critical(f"Received FIRST game state from eval_server = {eval_game_state}")
+    #                 self.update_game_state(eval_game_state)
 
-                if self.p2_event.is_set():
-                    eval_game_state = await self.eval_client_read_buffer.get()
-                    logger.critical(f"Received SECOND game state from eval_server = {eval_game_state}")
-                    self.update_game_state(eval_game_state)
+    #             if self.p2_event.is_set():
+    #                 eval_game_state = await self.eval_client_read_buffer.get()
+    #                 logger.critical(f"Received SECOND game state from eval_server = {eval_game_state}")
+    #                 self.update_game_state(eval_game_state)
 
-                # Propagate the final game state to visualiser with ignored action and hit
-                mqtt_message = self.generate_action_mqtt_message(0, None, None, None, None)
-                await self.send_relay_node()
-                await self.visualiser_send_buffer.put((ACTION_TOPIC, mqtt_message))
+    #             # Propagate the final game state to visualiser with ignored action and hit
+    #             mqtt_message = self.generate_action_mqtt_message(0, None, None, None, None)
+    #             await self.send_relay_node()
+    #             await self.visualiser_send_buffer.put((ACTION_TOPIC, mqtt_message))
 
-                self.next_round()
+    #             self.next_round()
 
-            except Exception as e:
-                logger.error(f"Error in eval_process: {e}")
+    #         except Exception as e:
+    #             logger.error(f"Error in eval_process: {e}")
 
 
     # def russian_roulette(self, player: int) -> str:
