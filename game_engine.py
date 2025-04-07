@@ -15,6 +15,7 @@ import pandas as pd
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from google.oauth2 import service_account
+from datetime import datetime, timedelta
 
 logger = get_logger(__name__)
 
@@ -51,9 +52,11 @@ class GameEngine:
         self.actions = ["badminton", "fencing", "boxing", "golf", "shield", "reload", "bomb"]
         # self.roulette_dictionary = {}
 
-
-        self.p1_end_game_event = asyncio.Event()
-        self.p2_end_game_event = asyncio.Event()
+        self.last_send_dictionary = {
+            1: datetime.now(),
+            2: datetime.now()
+        }
+        
 
         self.tasks = []
 
@@ -187,8 +190,8 @@ class GameEngine:
             except Exception as e:
                 logger.error(f"Error in prediction process: {e}")
     
-    def is_invalid(self, event: asyncio.Event, action: str) -> bool:
-        if event.is_set() or (self.perceived_game_round < 22 and action == "logout"):
+    def is_invalid(self, player: int, action: str) -> bool:
+        if datetime.now() - self.last_send_dictionary[player] < timedelta(seconds=3) or (self.perceived_game_round < 22 and action == "logout"):
             return True
         return action in ["shoot", "walk"]
     
@@ -202,7 +205,7 @@ class GameEngine:
                 # event_buffer: (player: int, action: str)
                 player, action, event, log = await self.event_buffer.get()
 
-                if self.is_invalid(event=event, action=action):
+                if self.is_invalid(player=player, action=action):
                     log(f"Dropping action: {action} in round {self.perceived_game_round}, with event: {event.is_set()}")
                     await self.send_visualiser_action(ACTION_TOPIC, player, "drop", False, False, 0)
                     continue
@@ -211,11 +214,11 @@ class GameEngine:
                 fov, snow_number = visualiser_state.get_fov(), visualiser_state.get_snow_number()
 
                 hit, action_possible = self.game_state.perform_action(action, player, fov, snow_number)
-
                 action = "gun" if action == "miss" else action
 
                 # Prepare for eval_server
                 eval_data = self.generate_game_state(player, action)
+                self.last_send_dictionary[player] = datetime.now()
                 await self.eval_client_send_buffer.put(eval_data)
                 log(f"ROUND: {self.perceived_game_round}. Sending eval data for player {player} with FOV: {hit}, ACTION_POSSIBLE: {action_possible} and SNOW_NUMBER: {snow_number} to eval_server: {eval_data}")
 
@@ -259,15 +262,9 @@ class GameEngine:
                     )
                 except asyncio.TimeoutError:
                     logger.warning("Event flag timeout occurred, proceeding without waiting.")
-                    
-                if self.p1_event.is_set():
+                
+                while not self.eval_client_read_buffer.empty():
                     eval_game_state = await self.eval_client_read_buffer.get()
-                    logger.critical(f"Received FIRST game state from eval_server = {eval_game_state}")
-                    self.update_game_state(eval_game_state)
-
-                if self.p2_event.is_set():
-                    eval_game_state = await self.eval_client_read_buffer.get()
-                    logger.critical(f"Received SECOND game state from eval_server = {eval_game_state}")
                     self.update_game_state(eval_game_state)
 
                 # Propagate the final game state to visualiser with ignored action and hit
