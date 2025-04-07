@@ -123,9 +123,9 @@ class GameEngine:
             if packet.type == GUN:
                 logger.info(f"GUN PACKET Received")
                 if player == 1:
-                    await self.event_buffer.put((player, "gun", self.p1_event, self.p1_logger))
+                    await self.event_buffer.put((player, "gun", self.p1_logger))
                 else:
-                    await self.event_buffer.put((player, "gun", self.p2_event, self.p2_logger))
+                    await self.event_buffer.put((player, "gun", self.p2_logger))
             elif packet.type == IMU:
                 logger.info(f"IMU PACKET Received")
                 try:
@@ -184,9 +184,9 @@ class GameEngine:
             try:
                 player, predicted_data = await self.ai_engine_write_buffer.get()
                 if player == 1:
-                    await self.event_buffer.put((player, predicted_data, self.p1_event, self.p1_logger))
+                    await self.event_buffer.put((player, predicted_data, self.p1_logger))
                 else:
-                    await self.event_buffer.put((player, predicted_data, self.p2_event, self.p2_logger))
+                    await self.event_buffer.put((player, predicted_data, self.p2_logger))
             except Exception as e:
                 logger.error(f"Error in prediction process: {e}")
     
@@ -202,8 +202,8 @@ class GameEngine:
         """
         while True:
             try:
-                # event_buffer: (player: int, action: str)
-                player, action, event, log = await self.event_buffer.get()
+                # event_buffer: (player: int, action: str, log)
+                player, action, log = await self.event_buffer.get()
 
                 if self.is_invalid(player=player, action=action):
                     log(f"Dropping action: {action} in round {self.perceived_game_round}")
