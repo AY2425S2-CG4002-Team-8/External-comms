@@ -294,19 +294,19 @@ class GameEngine:
     def generate_game_state_packet(self) -> tuple[GunPacket, GunPacket, HealthPacket, HealthPacket]:
         p1_gun_packet = GunPacket()
         p1_gun_packet.player, p1_gun_packet.ammo = 1, self.game_state.player_1.num_bullets
-        logger.info(f"P1 Ammo packet = {p1_gun_packet}")
+        logger.info(f"P1 Ammo packet = {p1_gun_packet.ammo}")
         p2_gun_packet = GunPacket()
         p2_gun_packet.player, p2_gun_packet.ammo = 4, self.game_state.player_2.num_bullets
-        logger.info(f"P2 Ammo packet = {p2_gun_packet}")
+        logger.info(f"P2 Ammo packet = {p2_gun_packet.ammo}")
 
         p1_health_packet = HealthPacket()
         p1_health_packet.player = 3
         p1_health_packet.p_health, p1_health_packet.s_health = self.game_state.player_1.hp, self.game_state.player_1.hp_shield
-        logger.info(f"P1 Health packet = {p1_health_packet}")
+        logger.info(f"P1 Health packet, player: {p1_health_packet.player}, p_health: {p1_health_packet.p_health}, s_health: {p1_health_packet.s_health}")
         p2_health_packet = HealthPacket()
         p2_health_packet.player = 6
         p2_health_packet.p_health, p2_health_packet.s_health = self.game_state.player_2.hp, self.game_state.player_2.hp_shield
-        logger.info(f"P2 Health packet = {p2_health_packet}")
+        logger.info(f"P2 Health packet: player: {p2_health_packet.player}, p_health: {p2_health_packet.p_health}, s_health: {p2_health_packet.s_health}")
 
         return p1_gun_packet, p2_gun_packet, p1_health_packet, p2_health_packet
     
