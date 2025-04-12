@@ -109,7 +109,7 @@ class GameEngine:
             player = packet.player
             if packet.type == HEALTH:
                 logger.info(f"HEALTH PACKET Received")
-                if player == 1:
+                if player == 2:
                     await self.p1_health_buffer.put(player)
                 else:
                     await self.p2_health_buffer.put(player)
@@ -158,7 +158,7 @@ class GameEngine:
                 connection_packet = await self.connection_buffer.get()
                 player, device, first_conn, status = connection_packet.player, connection_packet.device, connection_packet.first_conn, connection_packet.status
                 if first_conn:
-                    logger.critical(f"SENDING FIRST CONNECTION GAME STATE")
+                    logger.critical(f"SENDING FIRST CONNECTION GAME STATE for device {device} for player {player}")
                     await self.send_relay_node()
                 if device == 12:
                     device = "gun"
@@ -188,7 +188,10 @@ class GameEngine:
                         await self.event_buffer.put((player, "gun", self.p2_logger))
                     logger.critical("Added gun to action buffer")
                 except asyncio.TimeoutError:
-                    await self.event_buffer.put((player, "miss"))
+                    if player == 1:
+                        await self.event_buffer.put((player, "miss", self.p1_logger))
+                    else:
+                        await self.event_buffer.put((player, "miss", self.p2_logger))
                     logger.critical(f"Missed - No Health Packet Received")
             except Exception as e:
                 logger.error(f"Error in handle_gun: {e}")
