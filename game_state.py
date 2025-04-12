@@ -42,7 +42,7 @@ class GameState:
             action_possible = attacker.miss()
             return False, action_possible
         elif action == "gun" or action == "miss":
-            action_possible = attacker.shoot(opponent, fov)
+            action_possible = attacker.shoot(opponent)
         elif action == "shield":
             action_possible = attacker.shield()
         elif action == "reload":
@@ -133,12 +133,11 @@ class Player:
         return True
 
     #TODO: Attain ammo data from the gun packet + health from health packet
-    def shoot(self, opponent, fov) -> bool:
+    def shoot(self, opponent) -> bool:
         if not self.can_shoot():
             return False
         self.num_bullets -= 1
-        if fov:
-            opponent.damage(self.hp_bullet)
+        opponent.damage(self.hp_bullet)
 
         return True
     
