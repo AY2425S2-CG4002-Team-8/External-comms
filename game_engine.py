@@ -199,7 +199,7 @@ class GameEngine:
                 self.last_send_dictionary[player] = datetime.now()
 
                 await self.send_visualiser_action(ACTION_TOPIC, player, action, hit, action_possible, snow_number)
-                log(f"ROUND: {self.perceived_game_round}. Sending eval data for player {player} with FOV: {hit}, ACTION_POSSIBLE: {action_possible} and SNOW_NUMBER: {snow_number}")
+                log(f"Data for player {player} with FOV: {hit}, ACTION_POSSIBLE: {action_possible} and SNOW_NUMBER: {snow_number}")
                 await self.send_relay_node()
                 # self.update_roulette_dictionary(player, action)
                 
