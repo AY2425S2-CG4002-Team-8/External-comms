@@ -41,6 +41,8 @@ class ImuPacket:
             self.glove_gx = bytearray(2)
             self.glove_gy = bytearray(2)
             self.glove_gz = bytearray(2) # Total 26 byte
+            self.side = bytearray(1)
+
         else:
             self.seq = byteArray[1]
             self.player = byteArray[2]
@@ -56,6 +58,7 @@ class ImuPacket:
             self.glove_gx = struct.unpack('<h',  byteArray[21:23])[0]
             self.glove_gy = struct.unpack('<h', byteArray[23:25])[0]
             self.glove_gz = struct.unpack('<h', byteArray[25:27])[0]
+            self.side = byteArray[26]
 
     def to_bytes(self) -> bytes:
         """Convert ImuPacket to bytes for transmission."""
@@ -75,6 +78,7 @@ class ImuPacket:
             + struct.pack('<h', self.glove_gx)
             + struct.pack('<h', self.glove_gy)
             + struct.pack('<h', self.glove_gz)
+            + struct.pack('<B', self.side)
         )
 
     def __len__(self):
@@ -130,11 +134,13 @@ class ConnPacket:
             self.player = bytearray(1) 
             self.device = bytearray(1)
             self.first_conn = bytearray(1)
+            self.status = bytearray(1)
 
         else:
             self.player = byteArray[1]
             self.device = byteArray[2]
             self.first_conn = byteArray[3]
+            self.status = byteArray[4]
 
     def to_bytes(self) -> bytearray:
         byte_array = bytearray()
@@ -142,7 +148,8 @@ class ConnPacket:
         byte_array.append(self.player)
         byte_array.append(self.device)
         byte_array.append(self.first_conn)
-        
+        byte_array.append(self.status)
+
         return byte_array
     
     def __len__(self):

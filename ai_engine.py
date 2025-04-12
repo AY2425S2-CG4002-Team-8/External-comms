@@ -1,7 +1,7 @@
 import asyncio
 from datetime import datetime
 import json
-from config import AI_ROUND_TIMEOUT, COOLDOWN_TOPIC
+from config import AI_MINIMUM_PACKETS, AI_ROUND_TIMEOUT, COOLDOWN_TOPIC
 from pynq import Overlay, allocate, PL, Clocks
 import pynq.ps
 from logger import get_logger
@@ -11,7 +11,11 @@ import joblib
 from numpy import fft
 from sklearn.preprocessing import LabelEncoder
 import os
-
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
+from google.oauth2 import service_account
+from threading import Lock
+from datetime import datetime
 
 logger = get_logger(__name__)
 
@@ -19,7 +23,13 @@ class AiEngine:
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Engine Init~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#   
 
-    def __init__(self, p1_read_buffer: asyncio.Queue, p2_read_buffer: asyncio.Queue, write_buffer: asyncio.Queue, visualiser_send_buffer: asyncio.Queue):
+    def __init__(
+            self, 
+            p1_read_buffer: asyncio.Queue,
+            p2_read_buffer: asyncio.Queue, 
+            write_buffer: asyncio.Queue, 
+            visualiser_send_buffer: asyncio.Queue,
+    ):
         PL.reset()
         self.MAX_PREDICTION_DATA_POINTS = 35 
         self.FEATURE_SIZE = 12
@@ -31,10 +41,10 @@ class AiEngine:
         self.visualiser_send_buffer = visualiser_send_buffer
 
         self.COLUMNS = ['gun_ax', 'gun_ay', 'gun_az', 'gun_gx', 'gun_gy', 'gun_gz', 'glove_ax', 'glove_ay', 'glove_az', 'glove_gx', 'glove_gy', 'glove_gz']
-        self.bitstream_path = "/home/xilinx/capstone/FPGA-AI/mlp_trim35.bit"
+        self.bitstream_path = "/home/xilinx/capstone/FPGA-AI/mlp_trim35_eval.bit"
         self.input_size = 132 
         self.output_size = 10  
-        self.scaler_path = "/home/xilinx/capstone/FPGA-AI/robust_scaler_mlp_trim35.save"
+        self.scaler_path = "/home/xilinx/capstone/FPGA-AI/robust_scaler_mlp_trim35_eval.save"
         self.scaler = joblib.load(self.scaler_path)
         self.classes = '/home/xilinx/capstone/FPGA-AI/classes_comb.npy'
         self.label_encoder = LabelEncoder()
@@ -141,9 +151,10 @@ class AiEngine:
                 print("DMA_1 RECV ERR: " + self.dma_1_recv.error)
 
         pred = np.argmax(output_buffer)
+        conf = np.max(output_buffer)
         pred_class = self.label_encoder.inverse_transform([pred])
         del input_buffer, output_buffer
-        return pred_class[0]
+        return conf, pred_class[0]
     
     async def run(self) -> None:
         await asyncio.gather(
@@ -175,20 +186,6 @@ class AiEngine:
 
         return json.dumps(cooldown_payload)
 
-    def save_data_to_csv(self, data_dictionary):
-        """
-        Saves the data dictionary as a CSV file in the output directory.
-        """
-        if not os.path.exists(self.csv_dir):
-            os.makedirs(self.csv_dir)  # Ensure the directory exists
-
-        # Generate a timestamped filename
-        filename = f"{self.csv_dir}/prediction_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-
-        # Convert dictionary to DataFrame and save
-        df = pd.DataFrame.from_dict(data_dictionary)
-        df.to_csv(filename, index=False)  # Save without row indices
-
     async def predict(self, player: int, read_buffer: asyncio.Queue) -> None:
         """
         Collects self.PREDICTION_DATA_POINTS packets to form a dictionary of arrays (current implementation) for AI inference
@@ -218,22 +215,22 @@ class AiEngine:
                         bufs['glove_gy'].append(packet.glove_gy)
                         bufs['glove_gz'].append(packet.glove_gz)
                         packets += 1
-                        log(f"IMU packet Received on AI: {i+1}")
+                        log(f"IMU packet Received on AI: {i+1}, with sequence number {packet.seq}")
 
                     except asyncio.TimeoutError:
                         break
 
                 # If data buffer is < threshold, we skip processing and continue to the next iteration
-                if packets < 10:
+                if packets < AI_MINIMUM_PACKETS:
                     log(f"{packets} packets received. Skipping prediction")
                     continue
                 
                 await self.send_visualiser_cooldown(COOLDOWN_TOPIC, player, False)
                 df = pd.DataFrame([bufs])
 
-                predicted_data = await asyncio.to_thread(self.classify, df, player)
+                predicted_conf, predicted_data = await asyncio.to_thread(self.classify, df, player)
                 predicted_data = "bomb" if predicted_data == "snowbomb" else predicted_data
-                log(f"AI Engine Prediction: {predicted_data}")
+                log(f"AI Engine Prediction: {predicted_data}, Confidence: {predicted_conf}")
 
                 await self.write_buffer.put((player, predicted_data))
                 await asyncio.sleep(AI_ROUND_TIMEOUT)
