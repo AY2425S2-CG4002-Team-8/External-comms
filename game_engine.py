@@ -7,7 +7,7 @@ from packet import GunPacket, HealthPacket, PacketFactory, IMU, HEALTH, GUN, CON
 from relay_server import RelayServer
 from ai_engine import AiEngine
 from game_state import GameState, VisualiserState
-from config import AI_READ_BUFFER_MAX_SIZE, CONNECTION_TOPIC, EVENT_TIMEOUT, GE_SIGHT_TOPIC, GOOGLE_DRIVE_FOLDER_ID, GUN_TIMEOUT, SECRET_KEY, HOST, MQTT_HOST, MQTT_PORT, SEND_TOPICS, READ_TOPICS, MQTT_BASE_RECONNECT_DELAY, MQTT_MAX_RECONNECT_DELAY, MQTT_MAX_RECONNECT_ATTEMPTS, RELAY_SERVER_PORT, ACTION_TOPIC, ALL_INTERFACE, SERVICE_ACCOUNT_FILE
+from config import ACTION_DELAY, AI_READ_BUFFER_MAX_SIZE, CONNECTION_TOPIC, EVENT_TIMEOUT, GE_SIGHT_TOPIC, GOOGLE_DRIVE_FOLDER_ID, GUN_TIMEOUT, SECRET_KEY, HOST, MQTT_HOST, MQTT_PORT, SEND_TOPICS, READ_TOPICS, MQTT_BASE_RECONNECT_DELAY, MQTT_MAX_RECONNECT_DELAY, MQTT_MAX_RECONNECT_ATTEMPTS, RELAY_SERVER_PORT, ACTION_TOPIC, ALL_INTERFACE, SERVICE_ACCOUNT_FILE
 from logger import get_logger
 import random
 import os
@@ -29,13 +29,6 @@ class GameEngine:
         self.p1_visualiser_state = VisualiserState()
         self.p2_visualiser_state = VisualiserState()
 
-        # self.game_state_lock = asyncio.Lock()
-        # self.p1_event = asyncio.Event()
-        # self.p2_event = asyncio.Event()
-        self.perceived_game_round = 1
-
-        self.eval_client_read_buffer = asyncio.Queue()
-        self.eval_client_send_buffer = asyncio.Queue()
         self.visualiser_read_buffer = asyncio.Queue()
         self.visualiser_send_buffer = asyncio.Queue()
         self.relay_server_read_buffer = asyncio.Queue()
@@ -83,17 +76,6 @@ class GameEngine:
             await mqtt_client.run()
         except:
             logger.error("Failed to run MQTT Task")
-
-    async def initiate_eval_client(self):
-        eval_client = EvalClient(
-            secret_key=SECRET_KEY,
-            host=HOST,
-            port=self.port,
-            eval_client_read_buffer=self.eval_client_read_buffer,
-            eval_client_send_buffer=self.eval_client_send_buffer
-        )
-        logger.critical("Starting Eval_Client")
-        await eval_client.run()
 
     async def initiate_relay_server(self):
         relay_server = RelayServer(
@@ -204,10 +186,8 @@ class GameEngine:
             try:
                 # event_buffer: (player: int, action: str, log)
                 player, action, log = await self.event_buffer.get()
-
-                if self.is_invalid(player=player, action=action):
-                    log(f"Dropping action: {action} in round {self.perceived_game_round}")
-                    await self.send_visualiser_action(ACTION_TOPIC, player, "drop", False, False, 0)
+                if (datetime.now() - self.last_send_dictionary[player] < timedelta(seconds=ACTION_DELAY)):
+                    logger.warning(f"Player {player} is in cooldown, skipping action.")
                     continue
 
                 visualiser_state = self.p1_visualiser_state if player == 1 else self.p2_visualiser_state
@@ -216,86 +196,16 @@ class GameEngine:
                 hit, action_possible = self.game_state.perform_action(action, player, fov, snow_number)
                 action = "gun" if action == "miss" else action
 
-                # Prepare for eval_server
-                eval_data = self.generate_game_state(player, action)
                 self.last_send_dictionary[player] = datetime.now()
 
-                await self.eval_client_send_buffer.put(eval_data)
                 await self.send_visualiser_action(ACTION_TOPIC, player, action, hit, action_possible, snow_number)
-                log(f"ROUND: {self.perceived_game_round}. Sending eval data for player {player} with FOV: {hit}, ACTION_POSSIBLE: {action_possible} and SNOW_NUMBER: {snow_number} to eval_server: {eval_data}")
-                eval_game_state = await self.eval_client_read_buffer.get()
-                log(f"Received game state from eval_server = {eval_game_state}")
-                self.update_game_state(eval_game_state)
-                # event.set()
-                
-                mqtt_message = self.generate_action_mqtt_message(0, None, None, None, None)
-                await self.visualiser_send_buffer.put((ACTION_TOPIC, mqtt_message))
+                log(f"ROUND: {self.perceived_game_round}. Sending eval data for player {player} with FOV: {hit}, ACTION_POSSIBLE: {action_possible} and SNOW_NUMBER: {snow_number}")
                 await self.send_relay_node()
                 # self.update_roulette_dictionary(player, action)
                 
             except Exception as e:
                 logger.error(f"Exception in process: {e}")
                 raise
-
-    # def next_round(self) -> None:
-    #     self.p1_event.clear()
-    #     self.p2_event.clear()
-    #     self.perceived_game_round += 1
-
-    # def update_roulette_dictionary(self, player: int, action: str) -> None:
-    #     try:
-    #         if action not in self.actions:
-    #             return 
-    #         self.roulette_dictionary[player][action] -= 1
-    #         if action in self.roulette_dictionary and self.roulette_dictionary[player][action] == 0:
-    #             del self.roulette_dictionary[player][action]
-    #     except:
-    #         logger.error(f"Error in update rolette dictionary: {e}")
-
-    # async def eval_process(self) -> None:
-    #     """
-    #     Listens to eval_client_read_buffer for eval_server updates
-    #     Puts updated game state into relay_server and visualiser send_buffers to update
-    #     """ 
-    #     while True:
-    #         try:
-    #             try:
-    #                 await asyncio.wait_for(
-    #                     asyncio.gather(
-    #                         self.p1_event.wait(),
-    #                         self.p2_event.wait()
-    #                     ),
-    #                     timeout=EVENT_TIMEOUT 
-    #                 )
-    #             except asyncio.TimeoutError:
-    #                 logger.warning("Event flag timeout occurred, proceeding without waiting.")
-                
-    #             if self.p1_event.is_set():
-    #                 eval_game_state = await self.eval_client_read_buffer.get()
-    #                 logger.critical(f"Received FIRST game state from eval_server = {eval_game_state}")
-    #                 self.update_game_state(eval_game_state)
-
-    #             if self.p2_event.is_set():
-    #                 eval_game_state = await self.eval_client_read_buffer.get()
-    #                 logger.critical(f"Received SECOND game state from eval_server = {eval_game_state}")
-    #                 self.update_game_state(eval_game_state)
-
-    #             # Propagate the final game state to visualiser with ignored action and hit
-    #             mqtt_message = self.generate_action_mqtt_message(0, None, None, None, None)
-    #             await self.send_relay_node()
-    #             await self.visualiser_send_buffer.put((ACTION_TOPIC, mqtt_message))
-
-    #             self.next_round()
-
-    #         except Exception as e:
-    #             logger.error(f"Error in eval_process: {e}")
-
-
-    # def russian_roulette(self, player: int) -> str:
-    #     action = random.choice(list(self.roulette_dictionary[player].keys()))
-    #     self.update_roulette_dictionary(player, action)
-
-    #     return action
     
     async def send_visualiser_connection(self, topic: str, player: int, device: str, status: int) -> None:
         message = self.generate_connection_mqtt_message(player, device, status)
@@ -373,23 +283,6 @@ class GameEngine:
         await self.relay_server_send_buffer.put(p1_health_packet.to_bytes())
         await self.relay_server_send_buffer.put(p2_health_packet.to_bytes())
 
-    def update_game_state(self, eval_game_state: str) -> None:
-        eval_game_state = json.loads(eval_game_state)
-
-        for player_key, player_data in eval_game_state.items():
-            if player_key == "p1":
-                player = self.game_state.player_1
-            else:
-                player = self.game_state.player_2
-
-            # Update the player's attributes
-            player.hp = player_data.get("hp", player.hp)
-            player.num_bullets = player_data.get("bullets", player.num_bullets)
-            player.num_bombs = player_data.get("bombs", player.num_bombs)
-            player.hp_shield = player_data.get("shield_hp", player.hp_shield)
-            player.num_deaths = player_data.get("deaths", player.num_deaths)
-            player.num_shield = player_data.get("shields", player.num_shield)
-
     async def visualiser_state_process(self) -> None:
         for player in [1, 2]:
             ge_sight = self.p1_visualiser_state.get_fov() if player == 1 else self.p2_visualiser_state.get_fov()
@@ -420,7 +313,6 @@ class GameEngine:
             asyncio.create_task(self.relay_process()),
             asyncio.create_task(self.prediction_process()),
             asyncio.create_task(self.process()),
-            # asyncio.create_task(self.eval_process()),
             asyncio.create_task(self.visualiser_state_process()),
             asyncio.create_task(self.connection_process()),
         ]
