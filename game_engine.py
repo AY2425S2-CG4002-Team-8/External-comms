@@ -186,9 +186,6 @@ class GameEngine:
             try:
                 # event_buffer: (player: int, action: str, log)
                 player, action, log = await self.event_buffer.get()
-                if (datetime.now() - self.last_send_dictionary[player] < timedelta(seconds=ACTION_DELAY)):
-                    logger.warning(f"Player {player} is in cooldown, skipping action.")
-                    continue
 
                 visualiser_state = self.p1_visualiser_state if player == 1 else self.p2_visualiser_state
                 fov, snow_number = visualiser_state.get_fov(), visualiser_state.get_snow_number()
