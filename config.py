@@ -1,6 +1,7 @@
 # Socket Configuration
 SECRET_KEY="8888888888888888"
 HOST="127.0.0.1"
+
 ALL_INTERFACE=""
 RELAY_SERVER_HOST_NAME="makerslab-fpga-25.d2.comp.nus.edu.sg"
 RELAY_SERVER_PORT=8080
@@ -16,6 +17,7 @@ MQTT_HOST="175.41.155.178"
 MQTT_PORT=4100
 ACTION_TOPIC="GE/Vis/actions"
 CONNECTION_TOPIC="GE/Vis/connections"
+
 COOLDOWN_TOPIC="GE/Vis/cooldown"
 SIGHT_TOPIC_1="Vis/GE/sight/1"
 SIGHT_TOPIC_2="Vis/GE/sight/2"
