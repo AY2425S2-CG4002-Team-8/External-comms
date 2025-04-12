@@ -39,6 +39,11 @@ class GameEngine:
         self.event_buffer = asyncio.Queue()
         self.connection_buffer = asyncio.Queue()
 
+        self.p1_gun_buffer = asyncio.Queue()
+        self.p2_gun_buffer = asyncio.Queue()
+        self.p1_health_buffer = asyncio.Queue()
+        self.p2_health_buffer = asyncio.Queue()
+
         self.p1_logger = logger.ge_p1
         self.p2_logger = logger.ge_p2
 
