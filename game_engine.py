@@ -307,7 +307,6 @@ class GameEngine:
     async def start(self) -> None:
         self.tasks = [
             asyncio.create_task(self.initiate_mqtt()),
-            asyncio.create_task(self.initiate_eval_client()),
             asyncio.create_task(self.initiate_relay_server()),
             asyncio.create_task(self.initiate_ai_engine()),
             asyncio.create_task(self.relay_process()),
