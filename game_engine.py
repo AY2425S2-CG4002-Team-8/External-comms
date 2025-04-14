@@ -218,7 +218,7 @@ class GameEngine:
                 await self.eval_client_send_buffer.put(eval_data)
                 await self.send_visualiser_action(ACTION_TOPIC, player, action, hit, action_possible, snow_number)
                 log(f"ROUND: {self.perceived_game_round}. Sending eval data for player {player} with FOV: {hit}, ACTION_POSSIBLE: {action_possible} and SNOW_NUMBER: {snow_number} to eval_server: {eval_data}")
-                eval_game_state = await self.eval_client_read_buffer.get()
+                eval_game_state = await asyncio.wait_for(self.eval_client_read_buffer.get(), 5)
                 log(f"Received game state from eval_server = {eval_game_state}")
                 self.update_game_state(eval_game_state)
                 # event.set()
