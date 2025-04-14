@@ -149,6 +149,7 @@ class ConnPacket:
         byte_array.append(self.device)
         byte_array.append(self.first_conn)
         byte_array.append(self.status)
+
         return byte_array
     
     def __len__(self):
