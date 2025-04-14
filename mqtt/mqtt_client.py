@@ -77,7 +77,8 @@ class MqttClient:
         async for message in self.client.messages:
             logger.debug(f"Received message: {message.payload.decode()} on topic '{message.topic}'")
             logger.critical(f"Received message: {message.payload.decode()} on topic '{message.topic}'")
-            if message.topic == "G":
+            if message.topic == 'G':
+                logger.critical("G_BUFFER")
                 await self.g_buffer.put(message.payload.decode())
             else:
                 # Put the message into the read buffer for processing
