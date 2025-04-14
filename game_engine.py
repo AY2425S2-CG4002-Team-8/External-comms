@@ -61,6 +61,7 @@ class GameEngine:
         self.df_buffer = []
         self.p1_end_game_event = asyncio.Event()
         self.p2_end_game_event = asyncio.Event()
+        self.g_buffer = asyncio.Queue()
 
         self.tasks = []
 
@@ -77,6 +78,7 @@ class GameEngine:
                 port=MQTT_PORT,
                 read_buffer=self.visualiser_read_buffer,
                 send_buffer=self.visualiser_send_buffer,
+                g_buffer=self.g_buffer
                 send_topics=SEND_TOPICS,
                 read_topics=READ_TOPICS,
                 base_reconnect_delay=MQTT_BASE_RECONNECT_DELAY,
@@ -417,9 +419,7 @@ class GameEngine:
     # Upload file to Google Drive
     async def upload_to_google_drive(self, folder_id=GOOGLE_DRIVE_FOLDER_ID):
         while True:
-            x = await asyncio.to_thread(input)
-            if x != "g":
-                continue
+            await self.g_buffer.get()
             drive_service = self.authenticate_google_drive()
 
             for filename in self.df_buffer:

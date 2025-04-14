@@ -5,11 +5,12 @@ from logger import get_logger
 logger = get_logger(__name__)
 
 class MqttClient:
-    def __init__(self, host: str, port: int, read_buffer, send_buffer, send_topics: list[tuple[str, int]], read_topics: list[tuple[str, int]], base_reconnect_delay, max_reconnect_delay, max_reconnect_attempts):
+    def __init__(self, host: str, port: int, read_buffer, send_buffer, g_buffer, send_topics: list[tuple[str, int]], read_topics: list[tuple[str, int]], base_reconnect_delay, max_reconnect_delay, max_reconnect_attempts):
         self.host = host
         self.port = port
         self.read_buffer = read_buffer
         self.send_buffer = send_buffer
+        self.g_buffer = g_buffer
         self.send_topics = send_topics
         self.read_topics = read_topics
         self.base_reconnect_delay = base_reconnect_delay
@@ -75,7 +76,11 @@ class MqttClient:
         """ Listens to messages published by subscribed entities on client's cental message buffer and put into read_buffer """
         async for message in self.client.messages:
             logger.debug(f"Received message: {message.payload.decode()} on topic '{message.topic}'")
-            await self.read_buffer.put(message.payload.decode())
+            if message.topic == "G":
+                await self.g_buffer.put(message.payload.decode())
+            else:
+                # Put the message into the read buffer for processing
+                await self.read_buffer.put(message.payload.decode())
     
     async def produce(self) -> None:
         """ Coroutine that asynchronously publishes all messages from send_buffer to all relevant topics """
