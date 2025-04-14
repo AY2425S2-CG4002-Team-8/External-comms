@@ -419,7 +419,8 @@ class GameEngine:
     # Upload file to Google Drive
     async def upload_to_google_drive(self, folder_id=GOOGLE_DRIVE_FOLDER_ID):
         while True:
-            await self.g_buffer.get()
+            g = await self.g_buffer.get()
+            logger.critical(f"Received data from g_buffer: {g}, CONTINUING")
             drive_service = self.authenticate_google_drive()
 
             for filename in self.df_buffer:
