@@ -47,10 +47,10 @@ class AiEngine:
         self.csv_lock = Lock()
 
         self.COLUMNS = ['gun_ax', 'gun_ay', 'gun_az', 'gun_gx', 'gun_gy', 'gun_gz', 'glove_ax', 'glove_ay', 'glove_az', 'glove_gx', 'glove_gy', 'glove_gz']
-        self.bitstream_path = "/home/xilinx/capstone/FPGA-AI/mlp_trim35_eval.bit"
+        self.bitstream_path = "/home/xilinx/capstone/FPGA-AI/mlp_trim35_final_eval.bit"
         self.input_size = 132 
         self.output_size = 10  
-        self.scaler_path = "/home/xilinx/capstone/FPGA-AI/robust_scaler_mlp_trim35_eval.save"
+        self.scaler_path = = "/home/xilinx/capstone/FPGA-AI/robust_scaler_mlp_trim35_final_eval.save"
         self.scaler = joblib.load(self.scaler_path)
         self.classes = '/home/xilinx/capstone/FPGA-AI/classes_comb.npy'
         self.label_encoder = LabelEncoder()
@@ -173,10 +173,8 @@ class AiEngine:
         while not queue.empty():
             try:
                 queue.get_nowait()
-                logger.warning("Cleared queue")
                 queue.task_done()
             except asyncio.QueueEmpty:
-                logger.warning(f"Queue is empty with len: {queue.qsize()}")
                 break
 
     async def send_visualiser_cooldown(self, topic: str, player: int, ready: bool) -> None:
@@ -227,7 +225,7 @@ class AiEngine:
         """
         log = logger.ai_p1 if player == 1 else logger.ai_p2
         ge_log = logger.ge_p1 if player == 1 else logger.ge_p2
-        
+
         try:
             while True:
                 await self.clear_queue(read_buffer)
@@ -271,6 +269,7 @@ class AiEngine:
                 await self.write_buffer.put((player, predicted_data))
                 await asyncio.sleep(AI_ROUND_TIMEOUT)
                 await self.send_visualiser_cooldown(COOLDOWN_TOPIC, player, True)
+                log("AI Engine: Starting to collect data for prediction")
 
         except Exception as e:
             logger.error(f"Error occurred in the AI Engine: {e}")
