@@ -227,7 +227,8 @@ class GameEngine:
                 await self.visualiser_send_buffer.put((ACTION_TOPIC, mqtt_message))
                 await self.send_relay_node()
                 # self.update_roulette_dictionary(player, action)
-                
+            except asyncio.TimeoutError:
+                logger.warning("Timeout occurred while waiting for eval_server response. Continuing")
             except Exception as e:
                 logger.error(f"Exception in process: {e}")
                 raise
