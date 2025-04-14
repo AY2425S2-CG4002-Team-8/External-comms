@@ -78,7 +78,7 @@ class GameEngine:
                 port=MQTT_PORT,
                 read_buffer=self.visualiser_read_buffer,
                 send_buffer=self.visualiser_send_buffer,
-                g_buffer=self.g_buffer
+                g_buffer=self.g_buffer,
                 send_topics=SEND_TOPICS,
                 read_topics=READ_TOPICS,
                 base_reconnect_delay=MQTT_BASE_RECONNECT_DELAY,
