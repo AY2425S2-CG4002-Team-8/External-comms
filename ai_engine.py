@@ -190,6 +190,7 @@ class AiEngine:
         AI inference is against hardcoded dummy IMU data
         """
         log = logger.ai_p1 if player == 1 else logger.ai_p2
+        ge_log = logger.ge_p1 if player == 1 else logger.ge_p2
         try:
             while True:
                 await self.clear_queue(read_buffer)
@@ -213,7 +214,7 @@ class AiEngine:
                         bufs['glove_gy'].append(packet.glove_gy)
                         bufs['glove_gz'].append(packet.glove_gz)
                         packets += 1
-                        logger.debug(f"IMU packet Received on AI: {i+1}")
+                        ge_log(f"IMU packet Received on AI: {i+1}")
 
                     except asyncio.TimeoutError:
                         break

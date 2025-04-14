@@ -132,7 +132,6 @@ class GameEngine:
                 except asyncio.QueueFull:
                     logger.warning(f"AI buffer full, dropping IMU packet for player {player}")
             elif packet.type == CONN:
-                logger.info(f"CONNECTION PACKET Received")
                 await self.connection_buffer.put(packet)
             else:
                 logger.info(f"Invalid packet type received: {packet.type}")
