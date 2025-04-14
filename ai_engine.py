@@ -167,10 +167,8 @@ class AiEngine:
         while not queue.empty():
             try:
                 queue.get_nowait()
-                logger.warning("Cleared queue")
                 queue.task_done()
             except asyncio.QueueEmpty:
-                logger.warning(f"Queue is empty with len: {queue.qsize()}")
                 break
 
     async def send_visualiser_cooldown(self, topic: str, player: int, ready: bool) -> None:
@@ -198,7 +196,7 @@ class AiEngine:
                 packets = 0
                 bufs = {col: [] for col in self.COLUMNS}
 
-                log("AI Engine: Starting to collect data for prediction")
+                
                 for i in range(self.MAX_PREDICTION_DATA_POINTS):
                     try:
                         packet = await asyncio.wait_for(read_buffer.get(), timeout=self.PACKET_TIMEOUT)
@@ -235,6 +233,7 @@ class AiEngine:
                 await self.write_buffer.put((player, predicted_data))
                 await asyncio.sleep(AI_ROUND_TIMEOUT)
                 await self.send_visualiser_cooldown(COOLDOWN_TOPIC, player, True)
+                log("AI Engine: Starting to collect data for prediction")
 
         except Exception as e:
             logger.error(f"Error occurred in the AI Engine: {e}")

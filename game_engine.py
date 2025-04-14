@@ -28,10 +28,6 @@ class GameEngine:
         self.game_state = GameState()
         self.p1_visualiser_state = VisualiserState()
         self.p2_visualiser_state = VisualiserState()
-
-        # self.game_state_lock = asyncio.Lock()
-        # self.p1_event = asyncio.Event()
-        # self.p2_event = asyncio.Event()
         self.perceived_game_round = 1
 
         self.eval_client_read_buffer = asyncio.Queue()
@@ -127,7 +123,6 @@ class GameEngine:
                 else:
                     await self.event_buffer.put((player, "gun", self.p2_logger))
             elif packet.type == IMU:
-                logger.info(f"IMU PACKET Received")
                 try:
                     if player == 1:
                         self.p1_ai_engine_read_buffer.put_nowait(packet)
