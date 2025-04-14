@@ -76,6 +76,7 @@ class MqttClient:
         """ Listens to messages published by subscribed entities on client's cental message buffer and put into read_buffer """
         async for message in self.client.messages:
             logger.debug(f"Received message: {message.payload.decode()} on topic '{message.topic}'")
+            logger.critical(f"Received message: {message.payload.decode()} on topic '{message.topic}'")
             if message.topic == "G":
                 await self.g_buffer.put(message.payload.decode())
             else:
