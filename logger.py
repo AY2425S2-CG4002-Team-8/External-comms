@@ -54,8 +54,8 @@ def get_logger(name: str) -> logging.Logger:
                 'WARNING': 'light_red',
                 'ERROR': 'red',
                 'CRITICAL': 'white',
-                'AI_P1': 'cyan',
-                'AI_P2': 'purple',
+                'AI_P1': 'cyan, bg_white',
+                'AI_P2': 'purple, bg_white',
                 'GE_P1': 'light_cyan',
                 'GE_P2': 'light_purple'
             }
