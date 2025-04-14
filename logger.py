@@ -37,7 +37,7 @@ logging.Logger.ge_p2 = ge_p2
 
 def get_logger(name: str) -> logging.Logger:
     logger = logging.getLogger(name)
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging.INFO)
 
     if not logger.handlers:
         # Console handler with color
