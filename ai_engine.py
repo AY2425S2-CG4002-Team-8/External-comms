@@ -41,10 +41,10 @@ class AiEngine:
         self.visualiser_send_buffer = visualiser_send_buffer
 
         self.COLUMNS = ['gun_ax', 'gun_ay', 'gun_az', 'gun_gx', 'gun_gy', 'gun_gz', 'glove_ax', 'glove_ay', 'glove_az', 'glove_gx', 'glove_gy', 'glove_gz']
-        self.bitstream_path = "/home/xilinx/capstone/FPGA-AI/mlp_trim35_final_eval.bit"
+        self.bitstream_path = "/home/xilinx/capstone/FPGA-AI/mlp_trim35_eval.bit"
         self.input_size = 132 
         self.output_size = 10  
-        self.scaler_path = "/home/xilinx/capstone/FPGA-AI/robust_scaler_mlp_trim35_final_eval.save"
+        self.scaler_path = "/home/xilinx/capstone/FPGA-AI/robust_scaler_mlp_trim35_eval.save"
         self.scaler = joblib.load(self.scaler_path)
         self.classes = '/home/xilinx/capstone/FPGA-AI/classes_comb.npy'
         self.label_encoder = LabelEncoder()
