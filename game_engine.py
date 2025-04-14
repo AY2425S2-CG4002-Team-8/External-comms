@@ -133,7 +133,6 @@ class GameEngine:
                 else:
                     await self.p2_event_buffer.put("gun")
             elif packet.type == IMU:
-                logger.info(f"IMU PACKET Received")
                 try:
                     if player == 1:
                         self.p1_ai_engine_read_buffer.put_nowait(packet)
@@ -142,7 +141,6 @@ class GameEngine:
                 except asyncio.QueueFull:
                     logger.warning(f"AI buffer full, dropping IMU packet for player {player}")
             elif packet.type == CONN:
-                logger.info(f"CONNECTION PACKET Received")
                 await self.connection_buffer.put(packet)
             else:
                 logger.info(f"Invalid packet type received: {packet.type}")

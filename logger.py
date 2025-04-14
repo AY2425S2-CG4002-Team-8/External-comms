@@ -37,7 +37,7 @@ logging.Logger.ge_p2 = ge_p2
 
 def get_logger(name: str) -> logging.Logger:
     logger = logging.getLogger(name)
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging.INFO)
 
     if not logger.handlers:
         # Console handler with color
@@ -51,11 +51,11 @@ def get_logger(name: str) -> logging.Logger:
             log_colors={
                 'DEBUG': 'green',
                 'INFO': 'blue',
-                'WARNING': 'light_red',
-                'ERROR': 'red',
+                'WARNING': 'light_yellow',
+                'ERROR': 'yellow',
                 'CRITICAL': 'white',
-                'AI_P1': 'cyan',
-                'AI_P2': 'purple',
+                'AI_P1': 'red',
+                'AI_P2': 'light_red',
                 'GE_P1': 'light_cyan',
                 'GE_P2': 'light_purple'
             }
