@@ -194,7 +194,7 @@ class GameEngine:
             except Exception as e:
                 logger.error(f"Error in prediction process: {e}")
     
-    def is_invalid(self, event: asyncio.Event, action: str, perceived_game_round: int) -> bool:
+    def is_invalid(self, event: asyncio.Event, action: str) -> bool:
         if event.is_set():
             return True
         return action in ["shoot", "walk"]
@@ -209,7 +209,7 @@ class GameEngine:
                 action = await event_buffer.get()
                 perceived_game_round = self.round.round_number
 
-                if self.is_invalid(event=event, action=action, perceived_game_round=perceived_game_round):
+                if self.is_invalid(event=event, action=action):
                     log(f"Dropping action: {action} in round {perceived_game_round}, with event: {event.is_set()}")
                     await self.send_visualiser_action(ACTION_TOPIC, player, "drop", False, False, 0)
                     continue
@@ -416,26 +416,26 @@ class GameEngine:
 
     # Upload file to Google Drive
     async def upload_to_google_drive(self, folder_id=GOOGLE_DRIVE_FOLDER_ID):
-        await asyncio.gather(
-            self.p1_end_game_event.wait(),
-            self.p2_end_game_event.wait()
-        )
-        drive_service = self.authenticate_google_drive()
+        while True:
+            x = await asyncio.to_thread(input)
+            if x != "g":
+                continue
+            drive_service = self.authenticate_google_drive()
 
-        for filename in self.df_buffer:
-            file_metadata = {
-                "name": filename,
-                "parents": [folder_id]  # Upload to specific folder
-            }
-            media = MediaFileUpload(filename, mimetype="text/csv")
+            for filename in self.df_buffer:
+                file_metadata = {
+                    "name": filename,
+                    "parents": [folder_id]  # Upload to specific folder
+                }
+                media = MediaFileUpload(filename, mimetype="text/csv")
 
-            file = drive_service.files().create(
-                body=file_metadata,
-                media_body=media,
-                fields="id"
-            ).execute()
+                file = drive_service.files().create(
+                    body=file_metadata,
+                    media_body=media,
+                    fields="id"
+                ).execute()
 
-            print(f"Uploaded {filename} to Google Drive with file ID: {file.get('id')}")
+                print(f"Uploaded {filename} to Google Drive with file ID: {file.get('id')}")
 
     # Save to CSV and Upload
     def save_to_csv(self, df, filename):
