@@ -50,7 +50,7 @@ class AiEngine:
         self.bitstream_path = "/home/xilinx/capstone/FPGA-AI/mlp_trim35_final_eval.bit"
         self.input_size = 132 
         self.output_size = 10  
-        self.scaler_path = = "/home/xilinx/capstone/FPGA-AI/robust_scaler_mlp_trim35_final_eval.save"
+        self.scaler_path = "/home/xilinx/capstone/FPGA-AI/robust_scaler_mlp_trim35_final_eval.save"
         self.scaler = joblib.load(self.scaler_path)
         self.classes = '/home/xilinx/capstone/FPGA-AI/classes_comb.npy'
         self.label_encoder = LabelEncoder()
