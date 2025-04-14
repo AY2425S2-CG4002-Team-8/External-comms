@@ -51,11 +51,11 @@ def get_logger(name: str) -> logging.Logger:
             log_colors={
                 'DEBUG': 'green',
                 'INFO': 'blue',
-                'WARNING': 'light_red',
-                'ERROR': 'red',
+                'WARNING': 'light_yellow',
+                'ERROR': 'yellow',
                 'CRITICAL': 'white',
-                'AI_P1': 'cyan, bg_white',
-                'AI_P2': 'purple, bg_white',
+                'AI_P1': 'red',
+                'AI_P2': 'light_red',
                 'GE_P1': 'light_cyan',
                 'GE_P2': 'light_purple'
             }
