@@ -220,7 +220,6 @@ class AiEngine:
 
                 # If data buffer is < threshold, we skip processing and continue to the next iteration
                 if packets < AI_MINIMUM_PACKETS:
-                    log(f"{packets} packets received. Skipping prediction")
                     continue
                 
                 await self.send_visualiser_cooldown(COOLDOWN_TOPIC, player, False)
