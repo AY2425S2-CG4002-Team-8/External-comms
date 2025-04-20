@@ -31,10 +31,10 @@ class AiEngine:
         self.visualiser_send_buffer = visualiser_send_buffer
 
         self.COLUMNS = ['gun_ax', 'gun_ay', 'gun_az', 'gun_gx', 'gun_gy', 'gun_gz', 'glove_ax', 'glove_ay', 'glove_az', 'glove_gx', 'glove_gy', 'glove_gz']
-        self.bitstream_path = "/home/xilinx/capstone/FPGA-AI/mlp_trim35_unseen.bit"
+        self.bitstream_path = "/home/xilinx/capstone/FPGA-AI/mlp_trim35_final_eval.bit"
         self.input_size = 132 
         self.output_size = 10  
-        self.scaler_path = "/home/xilinx/capstone/FPGA-AI/robust_scaler_mlp_trim35_unseen.save"
+        self.scaler_path = "/home/xilinx/capstone/FPGA-AI/robust_scaler_mlp_trim35_final_eval.save"
         self.scaler = joblib.load(self.scaler_path)
         self.classes = '/home/xilinx/capstone/FPGA-AI/classes_comb.npy'
         self.label_encoder = LabelEncoder()
@@ -176,20 +176,6 @@ class AiEngine:
 
         return json.dumps(cooldown_payload)
 
-    def save_data_to_csv(self, data_dictionary):
-        """
-        Saves the data dictionary as a CSV file in the output directory.
-        """
-        if not os.path.exists(self.csv_dir):
-            os.makedirs(self.csv_dir)  # Ensure the directory exists
-
-        # Generate a timestamped filename
-        filename = f"{self.csv_dir}/prediction_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-
-        # Convert dictionary to DataFrame and save
-        df = pd.DataFrame.from_dict(data_dictionary)
-        df.to_csv(filename, index=False)  # Save without row indices
-
     async def predict(self, player: int, read_buffer: asyncio.Queue) -> None:
         """
         Collects self.PREDICTION_DATA_POINTS packets to form a dictionary of arrays (current implementation) for AI inference
@@ -219,14 +205,13 @@ class AiEngine:
                         bufs['glove_gy'].append(packet.glove_gy)
                         bufs['glove_gz'].append(packet.glove_gz)
                         packets += 1
-                        side = "RIGHT" if packet.side == 0 else "LEFT"
-                        log(f"IMU packet Received on AI: {i+1}, with sequence number {packet.seq}, SIDE = {side}")
+                        log(f"IMU packet Received on AI: {i+1}, with sequence number {packet.seq}")
 
                     except asyncio.TimeoutError:
                         break
 
                 # If data buffer is < threshold, we skip processing and continue to the next iteration
-                if packets < 10:
+                if packets < 21:
                     log(f"{packets} packets received. Skipping prediction")
                     continue
                 
