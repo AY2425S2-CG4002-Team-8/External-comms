@@ -132,7 +132,6 @@ class Player:
         
         return True
 
-    #TODO: Attain ammo data from the gun packet + health from health packet
     def shoot(self, opponent, fov) -> bool:
         if not self.can_shoot():
             return False

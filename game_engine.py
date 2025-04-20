@@ -8,7 +8,7 @@ from ai_engine import AiEngine
 from game_state import GameState, VisualiserState
 from config import AI_READ_BUFFER_MAX_SIZE, CONNECTION_TOPIC, EVENT_TIMEOUT, GE_SIGHT_TOPIC, GUN_TIMEOUT, SECRET_KEY, HOST, MQTT_HOST, MQTT_PORT, SEND_TOPICS, READ_TOPICS, MQTT_BASE_RECONNECT_DELAY, MQTT_MAX_RECONNECT_DELAY, MQTT_MAX_RECONNECT_ATTEMPTS, RELAY_SERVER_PORT, ACTION_TOPIC, ALL_INTERFACE
 from logger import get_logger
-import random
+from datetime import datetime, timedelta
 
 logger = get_logger(__name__)
 
@@ -23,7 +23,6 @@ class GameEngine:
         self.p2_visualiser_state = VisualiserState()
         self.perceived_game_round = 1
 
-        self.game_state_lock = asyncio.Lock()
         self.p1_event = asyncio.Event()
         self.p2_event = asyncio.Event()
 
@@ -47,15 +46,11 @@ class GameEngine:
         self.p2_logger = logger.ge_p2
 
         self.actions = ["badminton", "fencing", "boxing", "golf", "shield", "reload", "bomb"]
-        self.roulette_dictionary = {}
-
+        self.last_send_dictionary = {
+            1: datetime.now(),
+            2: datetime.now()
+        }
         self.tasks = []
-
-    def init_roulette(self):
-        for player in [1, 2]:
-            self.roulette_dictionary[player] = {
-                action: 2 for action in self.actions
-            }
 
     async def initiate_mqtt(self):
         try:
@@ -175,8 +170,8 @@ class GameEngine:
             except Exception as e:
                 logger.error(f"Error in prediction process: {e}")
     
-    def is_invalid(self, event: asyncio.Event, action: str, perceived_game_round: int) -> bool:
-        if event.is_set() or (perceived_game_round < 22 and action == "logout"):
+    def is_invalid(self, player: int, event: asyncio.Event, action: str, perceived_game_round: int) -> bool:
+        if event.is_set() or (datetime.now() - self.last_send_dictionary[player] < timedelta(seconds=3)) or (perceived_game_round < 22 and action == "logout"):
             return True
         return action in ["shoot", "walk"]
     
@@ -191,7 +186,7 @@ class GameEngine:
                 player, action = await self.event_buffer.get()
                 event, log = self.p1_event if player == 1 else self.p2_event, self.p1_logger if player == 1 else self.p2_logger
 
-                if self.is_invalid(event=event, action=action, perceived_game_round=self.perceived_game_round):
+                if self.is_invalid(player=player, event=event, action=action, perceived_game_round=self.perceived_game_round):
                     log(f"Dropping action: {action} in round {self.perceived_game_round}, with event: {event.is_set()}")
                     await self.send_visualiser_action(ACTION_TOPIC, player, "drop", False, False, 0)
                     continue
@@ -206,11 +201,11 @@ class GameEngine:
                 # Prepare for eval_server
                 eval_data = self.generate_game_state(player, action)
                 await self.eval_client_send_buffer.put(eval_data)
+                self.last_send_dictionary[player] = datetime.now()
                 log(f"ROUND: {self.perceived_game_round}. Sending eval data for player {player} with FOV: {hit}, ACTION_POSSIBLE: {action_possible} and SNOW_NUMBER: {snow_number} to eval_server: {eval_data}")
 
                 event.set()
                 await self.send_visualiser_action(ACTION_TOPIC, player, action, hit, action_possible, snow_number)
-                self.update_roulette_dictionary(player, action)
                 
             except Exception as e:
                 logger.error(f"Exception in process: {e}")
@@ -220,16 +215,6 @@ class GameEngine:
         self.p1_event.clear()
         self.p2_event.clear()
         self.perceived_game_round += 1
-
-    def update_roulette_dictionary(self, player: int, action: str) -> None:
-        try:
-            if action not in self.actions:
-                return 
-            self.roulette_dictionary[player][action] -= 1
-            if action in self.roulette_dictionary and self.roulette_dictionary[player][action] == 0:
-                del self.roulette_dictionary[player][action]
-        except:
-            logger.error(f"Error in update rolette dictionary: {e}")
 
     async def eval_process(self) -> None:
         """
@@ -248,21 +233,13 @@ class GameEngine:
                     )
                 except asyncio.TimeoutError:
                     logger.warning("Event flag timeout occurred, proceeding without waiting.")
-                    
-                if not self.p1_event.is_set():
-                    logger.error("P2 event is not set, continuing...")
-                    await self.eval_client_send_buffer.put(self.generate_game_state(1, self.russian_roulette(1)))
 
                 # Double await to clear both flags after both updates received
-                eval_game_state = await self.eval_client_read_buffer.get()
+                eval_game_state = await asyncio.wait_for(self.eval_client_read_buffer.get(), timeout=5)
                 logger.critical(f"Received FIRST game state from eval_server = {eval_game_state}")
                 self.update_game_state(eval_game_state)
 
-                if not self.p2_event.is_set():
-                    logger.error("P1 event is not set, continuing...")
-                    await self.eval_client_send_buffer.put(self.generate_game_state(2, self.russian_roulette(2)))
-
-                eval_game_state = await self.eval_client_read_buffer.get()
+                eval_game_state = await asyncio.wait_for(self.eval_client_read_buffer.get(), timeout=5)
                 logger.critical(f"Received SECOND game state from eval_server = {eval_game_state}")
                 self.update_game_state(eval_game_state)
 
@@ -276,13 +253,6 @@ class GameEngine:
             except Exception as e:
                 logger.error(f"Error in eval_process: {e}")
 
-
-    def russian_roulette(self, player: int) -> str:
-        action = random.choice(list(self.roulette_dictionary[player].keys()))
-        self.update_roulette_dictionary(player, action)
-
-        return action
-    
     async def send_visualiser_connection(self, topic: str, player: int, device: str) -> None:
         message = self.generate_connection_mqtt_message(player, device)
         await self.visualiser_send_buffer.put((topic, message))
@@ -376,11 +346,6 @@ class GameEngine:
             player.num_shield = player_data.get("shields", player.num_shield)
 
     async def visualiser_state_process(self) -> None:
-        for player in [1, 2]:
-            ge_sight = self.p1_visualiser_state.get_fov() if player == 1 else self.p2_visualiser_state.get_fov()
-            ge_avalanche = self.p1_visualiser_state.get_snow_number() if player == 1 else self.p2_visualiser_state.get_snow_number()
-            await self.visualiser_send_buffer.put((GE_SIGHT_TOPIC, self.generate_ge_sight_mqtt_message(player, ge_sight, ge_avalanche)))
-
         while True:
             try:
                 sight_payload = await self.visualiser_read_buffer.get()
@@ -416,7 +381,6 @@ class GameEngine:
             asyncio.create_task(self.connection_process())
         ]
         try:
-            self.init_roulette()
             await asyncio.gather(*self.tasks)
         except Exception as e:
             logger.error(f"An error occurred while running game engine tasks: {e}")
